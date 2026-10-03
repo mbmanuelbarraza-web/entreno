@@ -79,11 +79,18 @@ export class Temporizador {
     const toca = avisos.filter((a) => a.cuando <= ahora);
     const quedan = avisos.filter((a) => a.cuando > ahora);
     await this.ctx.storage.put("avisos", quedan);
-    for (const a of toca) {
-      const r = await enviarPush(suscripcion, { titulo: a.titulo, texto: a.texto, etiqueta: a.etiqueta }, this.env);
-      if (r.status === 404 || r.status === 410) { await this.ctx.storage.deleteAll(); return; } // suscripción vencida
-    }
+    // Primero dejamos programado el próximo aviso, así un error en este envío no lo borra
     await this.programarAlarma(quedan);
+    for (const a of toca) {
+      try {
+        const r = await enviarPush(suscripcion, { titulo: a.titulo, texto: a.texto, etiqueta: a.etiqueta }, this.env);
+        const detalle = r.ok ? "" : (await r.text()).slice(0, 300);
+        console.log(JSON.stringify({ aviso: a.titulo, estado: r.status, detalle, retrasoMs: Date.now() - a.cuando, pendientes: quedan.length }));
+        if (r.status === 404 || r.status === 410) { await this.ctx.storage.deleteAll(); await this.ctx.storage.deleteAlarm(); return; } // suscripción vencida
+      } catch (e) {
+        console.log(JSON.stringify({ aviso: a.titulo, error: String(e) }));
+      }
+    }
   }
 }
 
