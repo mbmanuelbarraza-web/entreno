@@ -584,7 +584,7 @@ const DIAS = {
 
 // ---------- Entrada en calor (unos 8 minutos, según los músculos del día) ----------
 // Estructura: activación general (bici) + movilidad específica + series de aproximación.
-// "temporizador": true muestra un botón con cuenta regresiva y aviso al terminar.
+// Todos tienen botón "Iniciar" con cuenta regresiva (seg = tiempo estimado); al terminar se marcan solos como hechos.
 Object.assign(EJERCICIOS, {
  "bici": {
   "nombre": "Bici fija",

@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 1 · v3";
+const VERSION_APP = "Etapa 1 · v4";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -242,6 +242,7 @@ const PANTALLAS = {
   async calentamiento() {
     const s = await DB.get("sesiones", E.sesion);
     if (!s) return mostrar("inicio");
+    if (!s.calInicio) { s.calInicio = Date.now(); await DB.put("sesiones", s); }
     const hechos = s.calentamiento || {};
     const lista = CALENTAMIENTO[s.dia];
     const total = Math.round(lista.reduce((t, x) => t + x.seg, 0) / 60);
@@ -249,7 +250,8 @@ const PANTALLAS = {
       <div class="cabecera"><button class="volver" data-accion="ir" data-p="sesion">← Lista</button>
         <span class="reloj" id="reloj-sesion"></span></div>
       <h1>Entrada en calor</h1>
-      <p class="suave" style="margin-top:0">≈ ${total} min · preparada para ${DIAS[s.dia].nombre.toLowerCase()}</p>
+      <p class="suave" style="margin-top:0">Preparada para ${DIAS[s.dia].nombre.toLowerCase()}</p>
+      <div class="tarjeta"><span id="cal-reloj">Previsto ≈ ${total} min</span></div>
       ${lista.map((x, i) => {
         const info = EJERCICIOS[x.e], ok = hechos[i];
         return `<div class="tarjeta" style="${ok ? "opacity:.5" : ""}">
@@ -258,8 +260,8 @@ const PANTALLAS = {
           ${ok ? "" : `<img class="gif" src="${gifUrl(x.e)}" alt="Cómo se hace ${info.nombre}" loading="lazy" style="width:150px;height:150px">
             <div class="atrib">${ATRIBUCION}</div>
             <details><summary>Cómo se hace</summary><ol>${info.pasos.map((p) => `<li>${p}</li>`).join("")}</ol></details>
-            <div class="${x.temporizador ? "fila2" : ""}">
-              ${x.temporizador ? `<button class="sec" data-accion="cal-timer" data-i="${i}">▶ Iniciar ${mmss(x.seg)}</button>` : ""}
+            <div class="fila2">
+              <button class="sec" data-accion="cal-timer" data-i="${i}">▶ Iniciar ${mmss(x.seg)}</button>
               <button data-accion="cal-hecho" data-i="${i}">Hecho</button>
             </div>`}
         </div>`;
@@ -280,6 +282,7 @@ const PANTALLAS = {
       <p class="suave">Día ${s.dia} · ${DIAS[s.dia].nombre}</p>
       <div class="tarjeta">
         <p>Duración: <b>${hhmm(s.fin - s.inicio)}</b> <span class="suave chico">(objetivo: 1 h 15 min)</span></p>
+        ${s.calInicio && s.calFin ? `<p>Entrada en calor: <b>${mmss((s.calFin - s.calInicio) / 1000)}</b> <span class="suave chico">(previsto ≈ ${Math.round(CALENTAMIENTO[s.dia].reduce((t, x) => t + x.seg, 0) / 60)} min)</span></p>` : ""}
         <p>Ejercicios: <b>${ejs}</b> · Series: <b>${series.length}</b></p>
         <p>Volumen total: <b>${kg(Math.round(vol))} kg</b> <span class="suave chico">(peso × repeticiones)</span></p>
       </div>
@@ -418,6 +421,12 @@ async function actualizarReloj() {
   if (!el || !E.sesion) return;
   const s = await DB.get("sesiones", E.sesion);
   if (s) el.textContent = mmss((Date.now() - s.inicio) / 1000);
+  const cal = $("#cal-reloj");
+  if (cal && s && s.calInicio) {
+    const prev = Math.round(CALENTAMIENTO[s.dia].reduce((t, x) => t + x.seg, 0) / 60);
+    const llevo = ((s.calFin || Date.now()) - s.calInicio) / 1000;
+    cal.innerHTML = (s.calFin ? "Te llevó <b>" : "Llevás <b>") + mmss(llevo) + "</b> · previsto ≈ " + prev + " min" + (!s.calFin && llevo > prev * 60 ? ' <span class="mal">(te estás pasando)</span>' : "");
+  }
 }
 setInterval(actualizarReloj, 1000);
 
@@ -455,22 +464,25 @@ const ACCIONES = {
   },
   async bloque(d) {
     const s = await DB.get("sesiones", E.sesion);
-    s.bloques[d.k] = d.v; await DB.put("sesiones", s);
+    s.bloques[d.k] = d.v;
+    if (d.k === "calentamiento" && s.calInicio && !s.calFin) s.calFin = Date.now();
+    await DB.put("sesiones", s);
     mostrar("sesion");
   },
   async "cal-hecho"(d) {
     const s = await DB.get("sesiones", E.sesion);
     s.calentamiento = s.calentamiento || {}; s.calentamiento[d.i] = true;
-    if (CALENTAMIENTO[s.dia].every((x, i) => s.calentamiento[i])) s.bloques.calentamiento = "hecho";
+    if (CALENTAMIENTO[s.dia].every((x, i) => s.calentamiento[i])) { s.bloques.calentamiento = "hecho"; if (!s.calFin) s.calFin = Date.now(); }
     await DB.put("sesiones", s);
-    if (s.bloques.calentamiento === "hecho") { toast("¡Entrada en calor completa!"); return mostrar("sesion"); }
+    if (E.pantalla !== "calentamiento") return;
+    if (s.bloques.calentamiento === "hecho") { toast("¡Entrada en calor completa! Te llevó " + mmss((s.calFin - s.calInicio) / 1000)); return mostrar("sesion"); }
     PANTALLAS.calentamiento();
   },
   async "cal-timer"(d) {
     prepararSonido();
     const s = await DB.get("sesiones", E.sesion);
     const x = CALENTAMIENTO[s.dia][d.i];
-    empezarDescanso(x.seg, "Terminó: " + EJERCICIOS[x.e].nombre, { titulo: EJERCICIOS[x.e].nombre, aviso: "¡Listo!" });
+    empezarDescanso(x.seg, "Terminó: " + EJERCICIOS[x.e].nombre, { titulo: EJERCICIOS[x.e].nombre, aviso: "¡Listo!", alTerminar: () => ACCIONES["cal-hecho"]({ i: d.i }) });
   },
   "abrir-ej": (d) => mostrar("ejercicio", { ejercicio: d.e, valoresListos: false }),
 
@@ -505,6 +517,7 @@ const ACCIONES = {
     const hoy = (await DB.porIndice("series", "sesion", s.id)).filter((x) => x.ejercicio === e);
     const n = hoy.length + 1;
     await DB.put("series", { id: nuevoId(), sesion: s.id, ejercicio: e, n, peso: E.peso, reps: E.reps, hora: Date.now() });
+    if (s.calInicio && !s.calFin) { s.calFin = Date.now(); await DB.put("sesiones", s); }
     // ¿Qué viene después?
     let prox, siguienteEj = null;
     if (n < r.series) prox = `Serie ${n + 1} de ${EJERCICIOS[e].nombre}: ${kg(E.peso)} kg × ${E.reps}`;
@@ -612,6 +625,7 @@ const D = { fin: 0, texto: "", timer: null };
 function empezarDescanso(segundos, texto, op = {}) {
   D.fin = Date.now() + segundos * 1000; D.texto = texto;
   D.aviso = op.aviso || "¡A entrenar!";
+  D.alTerminar = op.alTerminar || null;
   $(".d-titulo").textContent = op.titulo || "Descanso";
   $("[data-accion=descanso-saltear]").textContent = op.titulo ? "Terminar" : "Saltear descanso";
   guardarAjuste("descanso", { fin: D.fin, texto });
@@ -630,6 +644,7 @@ function reprogramarDescanso() {
     $("#d-reloj").textContent = mmss(f);
     if (f <= 0) {
       clearInterval(D.timer); $("#descanso").hidden = true; guardarAjuste("descanso", null);
+      if (D.alTerminar) { const f = D.alTerminar; D.alTerminar = null; f(); }
       if (document.visibilityState === "visible" && Date.now() - D.fin < 3000) { sonar(); $("#flash-txt").textContent = D.texto; $("#flash").hidden = false; }
     }
   };
@@ -637,6 +652,7 @@ function reprogramarDescanso() {
 }
 function cancelarDescanso() {
   clearInterval(D.timer); $("#descanso").hidden = true; guardarAjuste("descanso", null);
+  if (D.alTerminar) { const f = D.alTerminar; D.alTerminar = null; f(); } // "Terminar" antes de tiempo también cuenta como hecho
   cancelarAvisos();
 }
 // Si la app se cerró durante un descanso, lo retoma
