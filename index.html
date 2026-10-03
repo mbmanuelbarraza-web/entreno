@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mi Entrenamiento – Prueba</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Entreno">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#111827">
+<style>
+  :root { --fondo:#111827; --tarjeta:#1f2937; --texto:#f9fafb; --suave:#9ca3af; --naranja:#f97316; --verde:#22c55e; --rojo:#ef4444; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--fondo); color:var(--texto); font:17px/1.45 -apple-system, system-ui, sans-serif;
+         padding:calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 32px); }
+  h1 { font-size:24px; margin:0 0 4px; }
+  .sub { color:var(--suave); margin:0 0 16px; }
+  .tarjeta { background:var(--tarjeta); border-radius:16px; padding:16px; margin-bottom:14px; }
+  .tarjeta h2 { font-size:18px; margin:0 0 6px; }
+  .tarjeta p { margin:6px 0; color:#d1d5db; }
+  .estado { font-weight:600; margin-top:8px; }
+  .ok { color:var(--verde); } .mal { color:var(--rojo); } .pend { color:var(--suave); }
+  button { font:inherit; font-weight:600; border:0; border-radius:12px; padding:14px; width:100%; margin-top:8px;
+           background:var(--naranja); color:#111; min-height:52px; }
+  button.sec { background:#374151; color:var(--texto); }
+  button:disabled { opacity:.45; }
+  .fila { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+  .cuenta { font-size:44px; font-weight:700; text-align:center; margin:8px 0 0; font-variant-numeric:tabular-nums; }
+  .respuestas button { background:#374151; color:var(--texto); text-align:left; font-weight:500; }
+  #flash { position:fixed; inset:0; background:var(--naranja); display:none; align-items:center; justify-content:center;
+           font-size:40px; font-weight:800; color:#111; z-index:10; text-align:center; padding:20px; }
+  textarea { width:100%; min-height:160px; margin-top:8px; border-radius:12px; background:#0b1220; color:var(--texto); border:1px solid #374151; padding:10px; font:14px/1.4 ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<h1>Mi Entrenamiento</h1>
+<p class="sub">Etapa 0 · Página de prueba. Hacé las pruebas en orden y al final tocá "Copiar resultados".</p>
+
+<!-- PRUEBA 1: instalada como app -->
+<div class="tarjeta">
+  <h2>1. Instalada como app</h2>
+  <p>Tiene que abrirse desde el ícono de tu pantalla de inicio, sin la barra de Safari.</p>
+  <div class="estado" id="e-instalada"></div>
+</div>
+
+<!-- PRUEBA 2: sin conexión -->
+<div class="tarjeta">
+  <h2>2. Funciona sin internet</h2>
+  <p>Cerrá la app, poné el iPhone en modo avión y abrila de nuevo. Si ves esta pantalla, funciona.</p>
+  <div class="estado" id="e-offline"></div>
+</div>
+
+<!-- PRUEBA 3: pantalla encendida -->
+<div class="tarjeta">
+  <h2>3. Pantalla siempre encendida</h2>
+  <p>Tocá el botón y dejá el teléfono quieto 2 minutos. La pantalla no debería apagarse.</p>
+  <button id="b-wake">Mantener pantalla encendida</button>
+  <div class="estado" id="e-wake"></div>
+</div>
+
+<!-- PRUEBA 4: alerta con podcast -->
+<div class="tarjeta">
+  <h2>4. Alerta con podcast de fondo</h2>
+  <p>Poné un podcast en Spotify o YouTube, volvé a esta app y probá los 3 modos (uno por vez). Cada uno suena a los 10 segundos.</p>
+  <p><b>Importante:</b> el botón lateral del iPhone tiene que estar en modo sonido (no silencio).</p>
+  <div class="fila">
+    <button data-modo="ambient">Modo A</button>
+    <button data-modo="transient">Modo B</button>
+    <button data-modo="playback">Modo C</button>
+  </div>
+  <div class="cuenta" id="cuenta4"></div>
+  <div class="respuestas" id="preg4" hidden>
+    <p><b>¿Qué pasó con el podcast?</b></p>
+    <button data-r="Siguió sonando y escuché la alerta encima">Siguió sonando y escuché la alerta encima</button>
+    <button data-r="Bajó el volumen un momento y escuché la alerta">Bajó el volumen un momento y escuché la alerta</button>
+    <button data-r="Se pausó el podcast">Se pausó el podcast</button>
+    <button data-r="No escuché la alerta">No escuché la alerta</button>
+  </div>
+  <div class="estado" id="e-audio"></div>
+</div>
+
+<!-- PRUEBA 5: pantalla bloqueada / otra app -->
+<div class="tarjeta">
+  <h2>5. Alerta con la pantalla bloqueada</h2>
+  <p>Tocá el botón, bloqueá el iPhone (o andá a Spotify) y esperá unos 40 segundos. Después volvé a esta app.</p>
+  <button id="b-bloq">Empezar prueba de 30 segundos</button>
+  <div class="cuenta" id="cuenta5"></div>
+  <div class="estado" id="e-bloq"></div>
+</div>
+
+<!-- RESULTADOS -->
+<div class="tarjeta">
+  <h2>Resultados</h2>
+  <p>Tocá el botón y pegame el texto en el chat.</p>
+  <button id="b-copiar">Copiar resultados</button>
+  <textarea id="txt" readonly hidden></textarea>
+</div>
+
+<div id="flash">¡A entrenar!<br>Tocá para cerrar</div>
+
+<script>
+// ---------- Datos que se van juntando para el informe ----------
+const res = { audio: {}, bloqueo: "sin probar", wake: "sin probar" };
+const $ = (id) => document.getElementById(id);
+const marcar = (el, texto, clase) => { el.textContent = texto; el.className = "estado " + clase; };
+
+// ---------- Prueba 1: ¿está instalada? ----------
+const instalada = window.navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+res.instalada = instalada;
+marcar($("e-instalada"), instalada ? "✓ Abierta como app" : "✗ Abierta desde el navegador. Instalala con Compartir → Agregar a inicio", instalada ? "ok" : "mal");
+
+// ---------- Prueba 2: guardada para usar sin internet ----------
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").then(() => navigator.serviceWorker.ready).then(() => {
+    res.offline = "lista";
+    marcar($("e-offline"), navigator.onLine ? "✓ Guardada en el teléfono. Ahora probá en modo avión" : "✓ Funcionando SIN internet", "ok");
+    if (!navigator.onLine) res.offline = "probada sin internet: OK";
+  }).catch((e) => { res.offline = "error: " + e.message; marcar($("e-offline"), "✗ No se pudo guardar", "mal"); });
+} else { res.offline = "no soportado"; marcar($("e-offline"), "✗ Este navegador no lo permite", "mal"); }
+
+// ---------- Prueba 3: pantalla encendida ----------
+let candado = null;
+async function pedirPantalla() {
+  try {
+    candado = await navigator.wakeLock.request("screen");
+    res.wake = "activada";
+    marcar($("e-wake"), "✓ Activada. Esperá 2 minutos sin tocar", "ok");
+  } catch (e) { res.wake = "error: " + e.message; marcar($("e-wake"), "✗ No se pudo: " + e.message, "mal"); }
+}
+$("b-wake").onclick = () => {
+  if (!("wakeLock" in navigator)) { res.wake = "no soportado"; marcar($("e-wake"), "✗ Este iPhone no lo permite", "mal"); return; }
+  pedirPantalla();
+};
+// iOS suelta el candado si salís de la app: lo pedimos de nuevo al volver
+document.addEventListener("visibilitychange", () => { if (candado && document.visibilityState === "visible") pedirPantalla(); });
+
+// ---------- Sonido ----------
+let ctx = null;
+// Se llama al tocar un botón: iOS solo deja preparar el sonido con un toque tuyo.
+function prepararSonido(modo) {
+  if (navigator.audioSession) { try { navigator.audioSession.type = modo; } catch (e) {} }
+  if (ctx) { ctx.close(); }
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const b = ctx.createBuffer(1, 1, 22050), s = ctx.createBufferSource();
+  s.buffer = b; s.connect(ctx.destination); s.start(0);
+  setTimeout(() => ctx && ctx.suspend(), 100); // lo dejamos en pausa hasta la alerta
+}
+async function sonar() {
+  if (!ctx) return;
+  await ctx.resume();
+  const t0 = ctx.currentTime;
+  [0, 0.35, 0.7].forEach((d) => { // tres pitidos
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = 880; o.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.0001, t0 + d); g.gain.exponentialRampToValueAtTime(0.8, t0 + d + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.25);
+    o.start(t0 + d); o.stop(t0 + d + 0.3);
+  });
+  setTimeout(() => ctx && ctx.suspend(), 1500);
+  $("flash").style.display = "flex";
+}
+$("flash").onclick = () => ($("flash").style.display = "none");
+
+// ---------- Temporizador basado en la hora real ----------
+// No cuenta segundos: guarda la hora de fin y la compara con el reloj.
+function temporizador(segundos, elCuenta, alTerminar) {
+  const fin = Date.now() + segundos * 1000;
+  const id = setInterval(() => {
+    const falta = Math.ceil((fin - Date.now()) / 1000);
+    elCuenta.textContent = falta > 0 ? falta + " s" : "";
+    if (falta <= 0) { clearInterval(id); alTerminar(fin); }
+  }, 250);
+}
+
+// ---------- Prueba 4: modos de audio ----------
+let modoActual = null;
+document.querySelectorAll("[data-modo]").forEach((b) => b.onclick = () => {
+  modoActual = b.dataset.modo;
+  $("preg4").hidden = true;
+  prepararSonido(modoActual);
+  temporizador(10, $("cuenta4"), () => { sonar(); $("preg4").hidden = false; });
+});
+document.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => {
+  const nombre = { ambient: "A", transient: "B", playback: "C" }[modoActual];
+  res.audio[nombre] = b.dataset.r;
+  $("preg4").hidden = true;
+  marcar($("e-audio"), Object.entries(res.audio).map(([k, v]) => "Modo " + k + ": " + v).join(" · "), "ok");
+});
+
+// ---------- Prueba 5: pantalla bloqueada ----------
+$("b-bloq").onclick = () => {
+  prepararSonido("ambient");
+  marcar($("e-bloq"), "Ahora bloqueá el iPhone o andá a otra app…", "pend");
+  temporizador(30, $("cuenta5"), (fin) => {
+    const tarde = Math.round((Date.now() - fin) / 1000);
+    const oculto = document.visibilityState === "hidden";
+    sonar();
+    res.bloqueo = oculto ? "sonó en segundo plano (" + tarde + " s tarde)" :
+      tarde > 2 ? "no sonó en segundo plano; sonó al volver, " + tarde + " s tarde" : "sonó a tiempo con la app abierta (no se bloqueó)";
+    marcar($("e-bloq"), res.bloqueo, tarde > 2 ? "mal" : "ok");
+  });
+};
+
+// ---------- Copiar resultados ----------
+$("b-copiar").onclick = async () => {
+  const txt = [
+    "RESULTADOS ETAPA 0",
+    "Dispositivo: " + navigator.userAgent,
+    "1. Instalada como app: " + (res.instalada ? "sí" : "no"),
+    "2. Sin internet: " + (res.offline || "sin datos"),
+    "3. Pantalla encendida: " + res.wake + " (wakeLock " + ("wakeLock" in navigator ? "disponible" : "no disponible") + ")",
+    "4. Audio (audioSession " + (navigator.audioSession ? "disponible" : "no disponible") + "):",
+    "   Modo A: " + (res.audio.A || "sin probar"),
+    "   Modo B: " + (res.audio.B || "sin probar"),
+    "   Modo C: " + (res.audio.C || "sin probar"),
+    "5. Pantalla bloqueada: " + res.bloqueo,
+  ].join("\n");
+  $("txt").value = txt; $("txt").hidden = false;
+  try { await navigator.clipboard.writeText(txt); $("b-copiar").textContent = "✓ Copiado. Pegalo en el chat"; }
+  catch (e) { $("txt").select(); $("b-copiar").textContent = "Seleccioná el texto y copialo"; }
+};
+</script>
+</body>
+</html>
