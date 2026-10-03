@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 1 · v6";
+const VERSION_APP = "Etapa 1 · v7";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -72,6 +72,28 @@ function edad(nac) {
   let e = h.getFullYear() - n.getFullYear();
   if (h.getMonth() < n.getMonth() || (h.getMonth() === n.getMonth() && h.getDate() < n.getDate())) e--;
   return e;
+}
+
+// ---------- Unidades y equipo ----------
+const equipo = (e) => (typeof EQUIPO !== "undefined" && EQUIPO[e]) || "corporal";
+async function unidadDe(e) {
+  const u = (await ajuste("unidades")) || {};
+  return u[e] || (equipo(e) === "maquina" ? null : "kg");
+}
+async function pasoDe(e, u) {
+  const pasos = (await ajuste("pasos")) || {};
+  return pasos[e] || (u === "lb" ? 10 : REGLAS.pasoPeso);
+}
+const uSerie = (x) => x.unidad || "kg";
+// Texto del peso: "50 lb", "12 kg c/u", "60 kg"
+const fmtPeso = (peso, u, e) => kg(peso) + " " + u + (equipo(e) === "mancuernas2" ? " c/u" : "");
+const fmtSerie = (x) => fmtPeso(x.peso, uSerie(x), x.ejercicio) + " × " + x.reps;
+const fmtCorta = (x) => kg(x.peso) + (uSerie(x) === "lb" ? "lb" : "") + "×" + x.reps;
+// Peso real movido en kg (para el volumen): pasa libras a kg y cuenta las dos mancuernas
+const pesoKg = (x) => (uSerie(x) === "lb" ? x.peso * 0.4536 : x.peso) * (equipo(x.ejercicio) === "mancuernas2" ? 2 : 1);
+function etiquetaPeso(e, u) {
+  return { barra: "kg en total (barra + discos)", mancuernas2: "kg cada mancuerna", mancuerna1: "kg (una mancuerna)",
+    corporal: "kg extra", maquina: u === "lb" ? "lb (número de la máquina)" : "kg (número de la máquina)" }[equipo(e)];
 }
 
 // Estado en memoria
@@ -185,8 +207,8 @@ const PANTALLAS = {
     const s = await DB.get("sesiones", E.sesion);
     const hoy = (await DB.porIndice("series", "sesion", s.id)).filter((x) => x.ejercicio === e).sort((a, b) => a.n - b.n);
     const ant = await seriesAnteriores(e, s.id);
-    const pasos = (await ajuste("pasos")) || {};
-    const paso = pasos[e] || REGLAS.pasoPeso;
+    const u = await unidadDe(e);
+    const paso = await pasoDe(e, u || "kg");
     const n = hoy.length + 1;
     // Valores iniciales: lo de la última vez (misma serie), o la serie anterior de hoy
     if (!E.valoresListos) {
@@ -209,20 +231,26 @@ const PANTALLAS = {
 
       <div class="tarjeta" style="margin-top:10px">
         <p class="chico"><b>Objetivo:</b> ${r.series} series de ${r.repsMin} a ${r.repsMax} reps · descanso ${mmss(r.descanso)}</p>
-        <p class="chico suave">${ant.series.length ? `Última vez (${fecha(ant.fecha)}): ${ant.series.map((x) => kg(x.peso) + "×" + x.reps).join(" · ")}` : "Primera vez que lo registrás."}</p>
+        <p class="chico suave">${ant.series.length ? `Última vez (${fecha(ant.fecha)}): ${ant.series.map(fmtCorta).join(" · ")}${equipo(e) === "mancuernas2" ? " (c/u)" : ""}` : "Primera vez que lo registrás."}</p>
       </div>
 
       ${hoy.length ? `<div class="tarjeta"><b>Hoy</b>${hoy.map((x) => `
-        <div class="serie editable" data-accion="editar-serie" data-id="${x.id}"><span>Serie ${x.n}: <b>${kg(x.peso)} kg × ${x.reps}</b></span>
+        <div class="serie editable" data-accion="editar-serie" data-id="${x.id}"><span>Serie ${x.n}: <b>${fmtSerie(x)}</b></span>
         <span class="lapiz">✎ Editar</span></div>`).join("")}</div>` : ""}
 
+      ${u === null ? `<div class="tarjeta aviso">
+        <b>¿Esta máquina marca el peso en kilos o en libras?</b>
+        <p class="chico suave">Se pregunta una sola vez por máquina. Si los números de la pila van 10, 30, 50… o es de marca Cybex, Life Fitness o Hammer Strength, casi siempre son libras.</p>
+        <div class="fila2"><button data-accion="set-unidad" data-u="kg">Kilos</button><button data-accion="set-unidad" data-u="lb">Libras</button></div>
+      </div>` : `
       <div class="tarjeta">
         <h2>${n <= r.series ? `Serie ${n} de ${r.series}` : `Serie extra (${n})`}</h2>
         ${primeraVez ? `<p class="chico ok">Primera vez: tocá el número para escribir el peso, o usá + y −.</p>` : ""}
         <div class="ajuste">
           <button class="sec" data-accion="peso" data-d="-1">−</button>
-          <div class="valor"><b id="v-peso" data-accion="escribir-peso">${kg(E.peso)}</b><span>${info.pesoCorporal ? "kg extra" : "kg"}</span><br>
-            <span class="paso" data-accion="cambiar-paso">de a ${kg(paso)} kg</span></div>
+          <div class="valor"><b id="v-peso" data-accion="escribir-peso">${kg(E.peso)}</b><span>${etiquetaPeso(e, u)}</span><br>
+            <span class="paso" data-accion="cambiar-paso">de a ${kg(paso)} ${u}</span>
+            ${equipo(e) === "maquina" ? `<span class="paso" data-accion="set-unidad" data-u="${u === "lb" ? "kg" : "lb"}">cambiar a ${u === "lb" ? "kg" : "lb"}</span>` : ""}</div>
           <button class="sec" data-accion="peso" data-d="1">+</button>
         </div>
         <div class="ajuste">
@@ -231,7 +259,7 @@ const PANTALLAS = {
           <button class="sec" data-accion="reps" data-d="1">+</button>
         </div>
         <button class="grande" data-accion="confirmar-serie">✓ Confirmar serie</button>
-      </div>
+      </div>`}
       <div class="fila2">
         <button class="sec" data-accion="saltear-ej">Saltear ejercicio</button>
         <button class="sec" data-accion="${siguiente ? "abrir-ej" : "ir"}" data-e="${siguiente || ""}" data-p="sesion">${siguiente ? "Siguiente →" : "Ver lista"}</button>
@@ -277,7 +305,7 @@ const PANTALLAS = {
   async resumen() {
     const s = await DB.get("sesiones", E.sesion);
     const series = await DB.porIndice("series", "sesion", s.id);
-    const vol = series.reduce((t, x) => t + x.peso * x.reps, 0);
+    const vol = series.reduce((t, x) => t + pesoKg(x) * x.reps, 0);
     const ejs = new Set(series.map((x) => x.ejercicio)).size;
     app.innerHTML = `
       <h1>¡Entrenamiento terminado!</h1>
@@ -286,7 +314,7 @@ const PANTALLAS = {
         <p>Duración: <b>${hhmm(s.fin - s.inicio)}</b> <span class="suave chico">(objetivo: 1 h 15 min)</span></p>
         ${s.calInicio && s.calFin ? `<p>Entrada en calor: <b>${mmss((s.calFin - s.calInicio) / 1000)}</b> <span class="suave chico">(previsto ≈ ${Math.round(CALENTAMIENTO[s.dia].reduce((t, x) => t + x.seg, 0) / 60)} min)</span></p>` : ""}
         <p>Ejercicios: <b>${ejs}</b> · Series: <b>${series.length}</b></p>
-        <p>Volumen total: <b>${kg(Math.round(vol))} kg</b> <span class="suave chico">(peso × repeticiones)</span></p>
+        <p>Volumen total: <b>${kg(Math.round(vol))} kg</b> <span class="suave chico">(peso real × repeticiones, en kg)</span></p>
       </div>
       <button class="grande" data-accion="ir" data-p="inicio">Volver al inicio</button>`;
   },
@@ -320,7 +348,7 @@ const PANTALLAS = {
       <h2>${EJERCICIOS[e].nombre}</h2>
       <div class="tarjeta"><b>Peso máximo por sesión</b>${grafico(lista.map((x) => ({ x: x.fecha, y: x.max })), "kg")}</div>
       <div class="tarjeta">${lista.length ? lista.slice().reverse().map((x) => `
-        <div class="serie"><span>${fecha(x.fecha)}</span><span>${x.series.map((s) => `<span class="chip" data-accion="editar-serie" data-id="${s.id}">${kg(s.peso)}×${s.reps}</span>`).join("")}</span></div>`).join("") + `<p class="chico suave">Tocá una serie para corregirla.</p>`
+        <div class="serie"><span>${fecha(x.fecha)}</span><span>${x.series.map((s) => `<span class="chip" data-accion="editar-serie" data-id="${s.id}">${fmtCorta(s)}</span>`).join("")}</span></div>`).join("") + `<p class="chico suave">Tocá una serie para corregirla.</p>`
         : `<p class="suave">Todavía no hay registros.</p>`}</div>`;
   },
 
@@ -515,8 +543,7 @@ const ACCIONES = {
   "abrir-ej": (d) => mostrar("ejercicio", { ejercicio: d.e, valoresListos: false }),
 
   peso: async (d) => {
-    const pasos = (await ajuste("pasos")) || {};
-    const paso = pasos[E.ejercicio] || REGLAS.pasoPeso;
+    const paso = await pasoDe(E.ejercicio, (await unidadDe(E.ejercicio)) || "kg");
     E.peso = Math.max(0, Math.round((E.peso + d.d * paso) * 100) / 100);
     $("#v-peso").textContent = kg(E.peso);
   },
@@ -530,12 +557,21 @@ const ACCIONES = {
   },
   reps: (d) => { E.reps = Math.max(1, E.reps + +d.d); $("#v-reps").textContent = E.reps; },
   async "cambiar-paso"() {
-    const opciones = [0.5, 1, 1.25, 2, 2.5, 5, 10];
+    const u = (await unidadDe(E.ejercicio)) || "kg";
+    const opciones = u === "lb" ? PASOS_LB : PASOS_KG;
     const pasos = (await ajuste("pasos")) || {};
-    const actual = pasos[E.ejercicio] || REGLAS.pasoPeso;
+    const actual = await pasoDe(E.ejercicio, u);
     pasos[E.ejercicio] = opciones[(opciones.indexOf(actual) + 1) % opciones.length];
     await guardarAjuste("pasos", pasos);
-    $("[data-accion=cambiar-paso]").textContent = "de a " + kg(pasos[E.ejercicio]) + " kg";
+    $("[data-accion=cambiar-paso]").textContent = "de a " + kg(pasos[E.ejercicio]) + " " + u;
+  },
+  async "set-unidad"(d) {
+    const unidades = (await ajuste("unidades")) || {};
+    unidades[E.ejercicio] = d.u; await guardarAjuste("unidades", unidades);
+    const pasos = (await ajuste("pasos")) || {};
+    delete pasos[E.ejercicio]; await guardarAjuste("pasos", pasos); // vuelve al salto por defecto de esa unidad
+    toast(EJERCICIOS[E.ejercicio].nombre + ": " + (d.u === "lb" ? "libras" : "kilos"));
+    E.valoresListos = true; PANTALLAS.ejercicio();
   },
 
   async "confirmar-serie"() {
@@ -544,13 +580,14 @@ const ACCIONES = {
     const s = await DB.get("sesiones", E.sesion);
     const hoy = (await DB.porIndice("series", "sesion", s.id)).filter((x) => x.ejercicio === e);
     const n = hoy.length + 1;
-    await DB.put("series", { id: nuevoId(), sesion: s.id, ejercicio: e, n, peso: E.peso, reps: E.reps, hora: Date.now() });
+    const unidad = (await unidadDe(e)) || "kg";
+    await DB.put("series", { id: nuevoId(), sesion: s.id, ejercicio: e, n, peso: E.peso, unidad, reps: E.reps, hora: Date.now() });
     if (s.calInicio && !s.calFin) s.calFin = Date.now();
     s.saltados = s.saltados.filter((x) => x !== e);
     await DB.put("sesiones", s);
     // ¿Qué viene después?
     let prox, siguienteEj = null;
-    if (n < r.series) prox = `Serie ${n + 1} de ${EJERCICIOS[e].nombre}: ${kg(E.peso)} kg × ${E.reps}`;
+    if (n < r.series) prox = `Serie ${n + 1} de ${EJERCICIOS[e].nombre}: ${fmtPeso(E.peso, unidad, e)} × ${E.reps}`;
     else {
       siguienteEj = s.ejercicios.slice(s.ejercicios.indexOf(e) + 1).find((x) => !s.saltados.includes(x));
       prox = siguienteEj ? `Ahora: ${EJERCICIOS[siguienteEj].nombre}` : "¡Último ejercicio terminado!";
@@ -588,8 +625,7 @@ const ACCIONES = {
   async "editar-serie"(d) {
     const x = await DB.get("series", d.id);
     if (!x) return;
-    const pasos = (await ajuste("pasos")) || {};
-    E.ed = { serie: x, peso: x.peso, reps: x.reps, paso: pasos[x.ejercicio] || REGLAS.pasoPeso };
+    E.ed = { serie: x, peso: x.peso, reps: x.reps, unidad: uSerie(x), paso: await pasoDe(x.ejercicio, uSerie(x)) };
     let ed = $("#editor");
     if (!ed) { ed = document.createElement("div"); ed.id = "editor"; document.body.appendChild(ed); }
     ed.innerHTML = `<div class="hoja">
@@ -597,7 +633,8 @@ const ACCIONES = {
       <p class="chico suave" style="margin-top:-4px">${EJERCICIOS[x.ejercicio].nombre} · ${fecha(x.hora)}</p>
       <div class="ajuste">
         <button class="sec" data-accion="ed-peso" data-d="-1">−</button>
-        <div class="valor"><b id="ed-peso" data-accion="ed-escribir">${kg(x.peso)}</b><span>kg · tocá para escribir</span></div>
+        <div class="valor"><b id="ed-peso" data-accion="ed-escribir">${kg(x.peso)}</b><span id="ed-u">${etiquetaPeso(x.ejercicio, uSerie(x))}</span><br><span class="chico suave">tocá el número para escribir</span>
+          ${equipo(x.ejercicio) === "maquina" ? `<br><span class="paso" data-accion="ed-unidad">cambiar a ${uSerie(x) === "lb" ? "kg" : "lb"}</span>` : ""}</div>
         <button class="sec" data-accion="ed-peso" data-d="1">+</button>
       </div>
       <div class="ajuste">
@@ -620,10 +657,15 @@ const ACCIONES = {
     const listo = () => { const v = parseFloat(String(inp.value).replace(",", ".")); if (!isNaN(v) && v >= 0) E.ed.peso = v; b.textContent = kg(E.ed.peso); };
     inp.addEventListener("blur", listo); inp.addEventListener("keydown", (ev) => { if (ev.key === "Enter") inp.blur(); });
   },
+  "ed-unidad"() {
+    E.ed.unidad = E.ed.unidad === "lb" ? "kg" : "lb";
+    $("#ed-u").textContent = etiquetaPeso(E.ed.serie.ejercicio, E.ed.unidad);
+    $("[data-accion=ed-unidad]").textContent = "cambiar a " + (E.ed.unidad === "lb" ? "kg" : "lb");
+  },
   "ed-cancelar": () => ($("#editor").hidden = true),
   async "ed-guardar"() {
     const inp = $("#ed-peso input"); if (inp) inp.blur();
-    const x = E.ed.serie; x.peso = E.ed.peso; x.reps = E.ed.reps;
+    const x = E.ed.serie; x.peso = E.ed.peso; x.reps = E.ed.reps; x.unidad = E.ed.unidad;
     await DB.put("series", x);
     $("#editor").hidden = true; toast("Serie corregida");
     E.valoresListos = true; PANTALLAS[E.pantalla]();
@@ -832,6 +874,21 @@ async function cancelarAvisos() {
 // =====================================================================
 // 5. ARRANQUE
 // =====================================================================
+// Corrección única (v7): antes se cargaba la SUMA de las dos mancuernas; ahora se anota el peso de UNA.
+// Las series viejas no tienen el campo "unidad", así se reconocen.
+async function corregirMancuernasV7() {
+  if (await ajuste("migracionMancuernasV7")) return;
+  let n = 0;
+  for (const x of await DB.todos("series")) {
+    if (x.unidad) continue;
+    if (equipo(x.ejercicio) === "mancuernas2") { x.peso = Math.round((x.peso / 2) * 100) / 100; n++; }
+    x.unidad = "kg";
+    await DB.put("series", x);
+  }
+  await guardarAjuste("migracionMancuernasV7", Date.now());
+  if (n) setTimeout(() => toast(`Corregí ${n} series de mancuernas: ahora muestran el peso de cada una`), 800);
+}
+
 function aplicarLetra(px) { document.documentElement.style.setProperty("--letra", px + "px"); }
 
 (async function arrancar() {
@@ -841,6 +898,7 @@ function aplicarLetra(px) { document.documentElement.style.setProperty("--letra"
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
   await DB.abrir();
   aplicarLetra((await ajuste("letra")) || 20);
+  await corregirMancuernasV7();
   const perfil = await ajuste("perfil");
   if (!perfil || !perfil.nacimiento) return mostrar("config");
   const activa = (await DB.todos("sesiones")).find((s) => !s.fin);

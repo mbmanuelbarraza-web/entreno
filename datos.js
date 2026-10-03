@@ -952,3 +952,20 @@ const CALENTAMIENTO = {
   }
  ]
 };
+
+// ---------- Equipo de cada ejercicio (define cómo se anota el peso) ----------
+// barra       = peso total: barra + discos
+// mancuernas2 = se anota el número de UNA mancuerna (se usan dos; la app muestra "c/u")
+// mancuerna1  = se usa una sola mancuerna
+// maquina     = la app pregunta una vez si la máquina marca kilos o libras, y se carga el número que se ve
+// corporal    = peso del cuerpo; se anota solo el peso extra (0 si no agregás)
+const EQUIPO = {
+  banco_plano: "barra", banco_inclinado: "barra", aperturas_planas: "mancuernas2", aperturas_inclinadas: "mancuernas2",
+  biceps_barra_w: "barra", biceps_mancuernas: "mancuernas2", biceps_maquina: "maquina", biceps_concentrado: "mancuerna1",
+  dominadas: "corporal", remo_maquina: "maquina", dorsalera_cerrado: "maquina", dorsalera_abierto: "maquina",
+  fondos: "corporal", triceps_maquina: "maquina", triceps_tras_nuca: "mancuerna1", triceps_polea: "maquina",
+  sentadillas: "barra", estocadas: "mancuernas2", camilla_isquios: "maquina", gemelos_prensa: "maquina",
+  press_hombros_maquina: "maquina", remo_menton: "barra", press_arnold: "mancuernas2", vuelos: "mancuernas2",
+};
+const PASOS_KG = [0.5, 1, 1.25, 2, 2.5, 5, 10];
+const PASOS_LB = [2.5, 5, 10, 15, 20];
