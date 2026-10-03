@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 1 · v1";
+const VERSION_APP = "Etapa 1 · v2";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)

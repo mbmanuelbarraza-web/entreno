@@ -58,3 +58,8 @@ svg.graf text { fill:var(--suave); font-size:11px; }
 input[type=date], input[type=number], input[type=text] { font:inherit; width:100%; padding:12px; border-radius:12px; border:1px solid var(--borde); background:#0b1220; color:var(--texto); margin-top:6px; -webkit-user-select:text; user-select:text; }
 label { display:block; margin-top:10px; color:#d1d5db; }
 .aviso { border:1px solid var(--naranja); }
+
+/* Arreglo para iPhone: el campo de fecha tiene ancho mínimo propio y se salía de la tarjeta */
+input { display:block; max-width:100%; min-width:0; -webkit-appearance:none; appearance:none; }
+input[type=date] { min-height:50px; text-align:left; }
+input[type=date]::-webkit-date-and-time-value { text-align:left; }
