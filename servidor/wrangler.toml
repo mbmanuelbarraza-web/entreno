@@ -1,0 +1,17 @@
+# Configuración del servidor de avisos (Cloudflare Workers, plan gratis)
+name = "entreno-avisos"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+# Un "temporizador" por teléfono, que se despierta a la hora justa
+[[durable_objects.bindings]]
+name = "TEMPORIZADOR"
+class_name = "Temporizador"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Temporizador"]
+
+[vars]
+# A quién avisar si hay problemas con las notificaciones (lo pide Apple). No es secreto.
+VAPID_SUBJECT = "https://mbmanuelbarraza-web.github.io/entreno/"
