@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 1 · v4";
+const VERSION_APP = "Etapa 1 · v5";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -175,7 +175,8 @@ const PANTALLAS = {
           <div class="txt"><b>${EJERCICIOS[e].nombre}</b><span class="chico suave">${tot} series · ${reglas(e).repsMin}-${reglas(e).repsMax} reps</span></div>
           <span class="prog">${salt ? "salteado" : n + "/" + tot}</span></div>`;
       }).join("")}
-      <button class="${series.length ? "" : "sec"}" data-accion="terminar" id="b-terminar">Terminar entrenamiento</button>`;
+      <button class="${series.length ? "" : "sec"}" data-accion="terminar" id="b-terminar">Terminar entrenamiento</button>
+      <button class="sec" data-accion="descartar" data-confirmar="1">Descartar entrenamiento (no se guarda)</button>`;
   },
 
   // ---------- Ejercicio ----------
@@ -255,7 +256,7 @@ const PANTALLAS = {
       ${lista.map((x, i) => {
         const info = EJERCICIOS[x.e], ok = hechos[i];
         return `<div class="tarjeta" style="${ok ? "opacity:.5" : ""}">
-          <div class="cabecera"><b>${i + 1}. ${info.nombre}</b>${ok ? `<span class="ok">✓</span>` : ""}</div>
+          <div class="cabecera"><b>${i + 1}. ${info.nombre}</b>${ok ? `<button class="chico sec" data-accion="cal-deshacer" data-i="${i}">✓ Deshacer</button>` : ""}</div>
           <p class="chico">${x.dosis}</p>
           ${ok ? "" : `<img class="gif" src="${gifUrl(x.e)}" alt="Cómo se hace ${info.nombre}" loading="lazy" style="width:150px;height:150px">
             <div class="atrib">${ATRIBUCION}</div>
@@ -267,7 +268,8 @@ const PANTALLAS = {
         </div>`;
       }).join("")}
       <button class="grande" data-accion="bloque" data-k="calentamiento" data-v="hecho">Terminé la entrada en calor</button>
-      <button class="sec" data-accion="bloque" data-k="calentamiento" data-v="salteado">Saltear entrada en calor</button>`;
+      <button class="sec" data-accion="bloque" data-k="calentamiento" data-v="salteado">Saltear entrada en calor</button>
+      ${s.calInicio && (Object.keys(hechos).length || s.bloques.calentamiento) ? `<button class="sec" data-accion="cal-reiniciar" data-confirmar="1">↺ Reiniciar entrada en calor</button>` : ""}`;
     actualizarReloj();
   },
 
@@ -385,6 +387,9 @@ const PANTALLAS = {
         <button class="sec" data-accion="ir" data-p="config">Editar mis datos</button>
       </div>
       <div class="tarjeta"><button class="sec" data-accion="ir" data-p="respaldo">Respaldo de datos</button></div>
+      <div class="tarjeta"><b>Borrar historial de entrenamientos</b>
+        <p class="chico suave">Borra todos los entrenamientos y series (por ejemplo, las pruebas). Tus datos y tu peso corporal se mantienen.</p>
+        <button class="sec" data-accion="borrar-historial" data-confirmar="1">Borrar historial</button></div>
       <p class="chico suave" style="text-align:center">${VERSION_APP}<br>Imágenes de ejercicios ${ATRIBUCION}</p>`;
   },
 };
@@ -478,6 +483,29 @@ const ACCIONES = {
     if (s.bloques.calentamiento === "hecho") { toast("¡Entrada en calor completa! Te llevó " + mmss((s.calFin - s.calInicio) / 1000)); return mostrar("sesion"); }
     PANTALLAS.calentamiento();
   },
+  async "cal-deshacer"(d) {
+    const s = await DB.get("sesiones", E.sesion);
+    if (s.calentamiento) delete s.calentamiento[d.i];
+    if (s.bloques.calentamiento) { delete s.bloques.calentamiento; delete s.calFin; }
+    await DB.put("sesiones", s); PANTALLAS.calentamiento();
+  },
+  async "cal-reiniciar"() {
+    const s = await DB.get("sesiones", E.sesion);
+    delete s.calentamiento; delete s.calInicio; delete s.calFin; delete s.bloques.calentamiento;
+    await DB.put("sesiones", s); toast("Entrada en calor reiniciada"); PANTALLAS.calentamiento();
+  },
+  async descartar() {
+    const series = await DB.porIndice("series", "sesion", E.sesion);
+    for (const x of series) await DB.borrar("series", x.id);
+    await DB.borrar("sesiones", E.sesion);
+    cancelarDescanso(); soltarPantalla();
+    E.sesion = null; toast("Entrenamiento descartado"); mostrar("inicio");
+  },
+  async "borrar-historial"() {
+    await DB.limpiar("series"); await DB.limpiar("sesiones"); await guardarAjuste("descanso", null);
+    cancelarDescanso(); E.sesion = null;
+    toast("Historial borrado"); mostrar("inicio");
+  },
   async "cal-timer"(d) {
     prepararSonido();
     const s = await DB.get("sesiones", E.sesion);
@@ -517,7 +545,9 @@ const ACCIONES = {
     const hoy = (await DB.porIndice("series", "sesion", s.id)).filter((x) => x.ejercicio === e);
     const n = hoy.length + 1;
     await DB.put("series", { id: nuevoId(), sesion: s.id, ejercicio: e, n, peso: E.peso, reps: E.reps, hora: Date.now() });
-    if (s.calInicio && !s.calFin) { s.calFin = Date.now(); await DB.put("sesiones", s); }
+    if (s.calInicio && !s.calFin) s.calFin = Date.now();
+    s.saltados = s.saltados.filter((x) => x !== e);
+    await DB.put("sesiones", s);
     // ¿Qué viene después?
     let prox, siguienteEj = null;
     if (n < r.series) prox = `Serie ${n + 1} de ${EJERCICIOS[e].nombre}: ${kg(E.peso)} kg × ${E.reps}`;
@@ -586,6 +616,11 @@ document.addEventListener("click", (ev) => {
   const el = ev.target.closest("[data-accion]");
   if (!el) return;
   const fn = ACCIONES[el.dataset.accion];
+  if (el.dataset.confirmar && el.dataset.armado !== "1") {
+    el.dataset.armado = "1"; const txt = el.textContent; el.textContent = "Tocá de nuevo para confirmar";
+    setTimeout(() => { if (el.isConnected) { el.dataset.armado = ""; el.textContent = txt; } }, 4000);
+    return;
+  }
   if (fn) fn(el.dataset);
 });
 document.addEventListener("change", (ev) => { if (ev.target.id === "archivo" && ev.target.files[0]) importarRespaldo(ev.target.files[0]); });
