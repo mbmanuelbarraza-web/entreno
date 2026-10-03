@@ -25,203 +25,143 @@
   .ok { color:var(--verde); } .mal { color:var(--rojo); } .pend { color:var(--suave); }
   button { font:inherit; font-weight:600; border:0; border-radius:12px; padding:14px; width:100%; margin-top:8px;
            background:var(--naranja); color:#111; min-height:52px; }
-  button.sec { background:#374151; color:var(--texto); }
   button:disabled { opacity:.45; }
-  .fila { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
   .cuenta { font-size:44px; font-weight:700; text-align:center; margin:8px 0 0; font-variant-numeric:tabular-nums; }
-  .respuestas button { background:#374151; color:var(--texto); text-align:left; font-weight:500; }
   #flash { position:fixed; inset:0; background:var(--naranja); display:none; align-items:center; justify-content:center;
            font-size:40px; font-weight:800; color:#111; z-index:10; text-align:center; padding:20px; }
-  textarea { width:100%; min-height:160px; margin-top:8px; border-radius:12px; background:#0b1220; color:var(--texto); border:1px solid #374151; padding:10px; font:14px/1.4 ui-monospace, monospace; }
 </style>
 </head>
 <body>
 <h1>Mi Entrenamiento</h1>
-<p class="sub">Etapa 0 · Página de prueba. Hacé las pruebas en orden y al final tocá "Copiar resultados".</p>
+<p class="sub">Etapa 0b · Prueba de notificaciones. Abrila siempre desde el ícono de la pantalla de inicio.</p>
 
-<!-- PRUEBA 1: instalada como app -->
 <div class="tarjeta">
   <h2>1. Instalada como app</h2>
-  <p>Tiene que abrirse desde el ícono de tu pantalla de inicio, sin la barra de Safari.</p>
   <div class="estado" id="e-instalada"></div>
 </div>
 
-<!-- PRUEBA 2: sin conexión -->
 <div class="tarjeta">
-  <h2>2. Funciona sin internet</h2>
-  <p>Cerrá la app, poné el iPhone en modo avión y abrila de nuevo. Si ves esta pantalla, funciona.</p>
-  <div class="estado" id="e-offline"></div>
+  <h2>2. Activar notificaciones</h2>
+  <p>Tocá el botón y, cuando el iPhone pregunte, elegí <b>Permitir</b>.</p>
+  <button id="b-activar">Activar notificaciones</button>
+  <div class="estado" id="e-activar"></div>
 </div>
 
-<!-- PRUEBA 3: pantalla encendida -->
 <div class="tarjeta">
-  <h2>3. Pantalla siempre encendida</h2>
-  <p>Tocá el botón y dejá el teléfono quieto 2 minutos. La pantalla no debería apagarse.</p>
-  <button id="b-wake">Mantener pantalla encendida</button>
-  <div class="estado" id="e-wake"></div>
+  <h2>3. Simular un descanso de 30 segundos</h2>
+  <p>Poné un podcast en Spotify, tocá el botón y <b>bloqueá el iPhone</b>. Te tienen que llegar 2 notificaciones:</p>
+  <p>· a los 20 s: "Quedan 10 segundos"<br>· a los 30 s: "¡A entrenar!"</p>
+  <button id="b-descanso" disabled>Empezar descanso de prueba</button>
+  <div class="cuenta" id="cuenta"></div>
+  <div class="estado" id="e-descanso"></div>
 </div>
 
-<!-- PRUEBA 4: alerta con podcast -->
 <div class="tarjeta">
-  <h2>4. Alerta con podcast de fondo</h2>
-  <p>Poné un podcast en Spotify o YouTube, volvé a esta app y probá los 3 modos (uno por vez). Cada uno suena a los 10 segundos.</p>
-  <p><b>Importante:</b> el botón lateral del iPhone tiene que estar en modo sonido (no silencio).</p>
-  <div class="fila">
-    <button data-modo="ambient">Modo A</button>
-    <button data-modo="transient">Modo B</button>
-    <button data-modo="playback">Modo C</button>
-  </div>
-  <div class="cuenta" id="cuenta4"></div>
-  <div class="respuestas" id="preg4" hidden>
-    <p><b>¿Qué pasó con el podcast?</b></p>
-    <button data-r="Siguió sonando y escuché la alerta encima">Siguió sonando y escuché la alerta encima</button>
-    <button data-r="Bajó el volumen un momento y escuché la alerta">Bajó el volumen un momento y escuché la alerta</button>
-    <button data-r="Se pausó el podcast">Se pausó el podcast</button>
-    <button data-r="No escuché la alerta">No escuché la alerta</button>
-  </div>
-  <div class="estado" id="e-audio"></div>
-</div>
-
-<!-- PRUEBA 5: pantalla bloqueada / otra app -->
-<div class="tarjeta">
-  <h2>5. Alerta con la pantalla bloqueada</h2>
-  <p>Tocá el botón, bloqueá el iPhone (o andá a Spotify) y esperá unos 40 segundos. Después volvé a esta app.</p>
-  <button id="b-bloq">Empezar prueba de 30 segundos</button>
-  <div class="cuenta" id="cuenta5"></div>
-  <div class="estado" id="e-bloq"></div>
-</div>
-
-<!-- RESULTADOS -->
-<div class="tarjeta">
-  <h2>Resultados</h2>
-  <p>Tocá el botón y pegame el texto en el chat.</p>
-  <button id="b-copiar">Copiar resultados</button>
-  <textarea id="txt" readonly hidden></textarea>
+  <h2>4. Pitido nuevo (más fuerte)</h2>
+  <p>Con el podcast sonando y esta app abierta, tocá el botón. Suena a los 3 segundos, encima de la música.</p>
+  <button id="b-pitido">Probar pitido</button>
 </div>
 
 <div id="flash">¡A entrenar!<br>Tocá para cerrar</div>
 
 <script>
-// ---------- Datos que se van juntando para el informe ----------
-const res = { audio: {}, bloqueo: "sin probar", wake: "sin probar" };
+// Dirección del servidor de avisos (Cloudflare). Se completa cuando lo publiquemos.
+const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
+
 const $ = (id) => document.getElementById(id);
 const marcar = (el, texto, clase) => { el.textContent = texto; el.className = "estado " + clase; };
 
-// ---------- Prueba 1: ¿está instalada? ----------
+// ---------- 1. ¿Está instalada? ----------
 const instalada = window.navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
-res.instalada = instalada;
-marcar($("e-instalada"), instalada ? "✓ Abierta como app" : "✗ Abierta desde el navegador. Instalala con Compartir → Agregar a inicio", instalada ? "ok" : "mal");
+marcar($("e-instalada"), instalada ? "✓ Abierta como app" : "✗ Abierta desde el navegador: abrila desde el ícono", instalada ? "ok" : "mal");
 
-// ---------- Prueba 2: guardada para usar sin internet ----------
+// ---------- Guardar la app en el teléfono (sin internet) ----------
+let registro = null;
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").then(() => navigator.serviceWorker.ready).then(() => {
-    res.offline = "lista";
-    marcar($("e-offline"), navigator.onLine ? "✓ Guardada en el teléfono. Ahora probá en modo avión" : "✓ Funcionando SIN internet", "ok");
-    if (!navigator.onLine) res.offline = "probada sin internet: OK";
-  }).catch((e) => { res.offline = "error: " + e.message; marcar($("e-offline"), "✗ No se pudo guardar", "mal"); });
-} else { res.offline = "no soportado"; marcar($("e-offline"), "✗ Este navegador no lo permite", "mal"); }
+  navigator.serviceWorker.register("sw.js").then(() => navigator.serviceWorker.ready).then((r) => { registro = r; revisarSuscripcion(); });
+}
 
-// ---------- Prueba 3: pantalla encendida ----------
-let candado = null;
-async function pedirPantalla() {
+// ---------- 2. Notificaciones ----------
+const b64aBytes = (s) => { const b = atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
+let suscripcion = null;
+
+async function revisarSuscripcion() {
+  if (!registro || !("pushManager" in registro)) return;
+  suscripcion = await registro.pushManager.getSubscription();
+  if (suscripcion) { marcar($("e-activar"), "✓ Notificaciones activadas", "ok"); $("b-descanso").disabled = false; }
+}
+
+$("b-activar").onclick = async () => {
   try {
-    candado = await navigator.wakeLock.request("screen");
-    res.wake = "activada";
-    marcar($("e-wake"), "✓ Activada. Esperá 2 minutos sin tocar", "ok");
-  } catch (e) { res.wake = "error: " + e.message; marcar($("e-wake"), "✗ No se pudo: " + e.message, "mal"); }
-}
-$("b-wake").onclick = () => {
-  if (!("wakeLock" in navigator)) { res.wake = "no soportado"; marcar($("e-wake"), "✗ Este iPhone no lo permite", "mal"); return; }
-  pedirPantalla();
+    if (SERVIDOR === "PENDIENTE") throw new Error("Falta conectar el servidor");
+    if (!instalada) throw new Error("Primero abrila desde el ícono de la pantalla de inicio");
+    if (!registro || !("pushManager" in registro)) throw new Error("Este iPhone no permite notificaciones web (hace falta iOS 16.4 o más)");
+    const permiso = await Notification.requestPermission();
+    if (permiso !== "granted") throw new Error("No diste permiso. Activalo en Ajustes → Notificaciones → Entreno");
+    const { clave } = await (await fetch(SERVIDOR + "/clave")).json();
+    suscripcion = (await registro.pushManager.getSubscription()) ||
+      await registro.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64aBytes(clave) });
+    marcar($("e-activar"), "✓ Notificaciones activadas", "ok");
+    $("b-descanso").disabled = false;
+  } catch (e) { marcar($("e-activar"), "✗ " + e.message, "mal"); }
 };
-// iOS suelta el candado si salís de la app: lo pedimos de nuevo al volver
-document.addEventListener("visibilitychange", () => { if (candado && document.visibilityState === "visible") pedirPantalla(); });
 
-// ---------- Sonido ----------
+// ---------- Sonido (modo A: se mezcla con Spotify) ----------
 let ctx = null;
-// Se llama al tocar un botón: iOS solo deja preparar el sonido con un toque tuyo.
-function prepararSonido(modo) {
-  if (navigator.audioSession) { try { navigator.audioSession.type = modo; } catch (e) {} }
-  if (ctx) { ctx.close(); }
-  ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const b = ctx.createBuffer(1, 1, 22050), s = ctx.createBufferSource();
-  s.buffer = b; s.connect(ctx.destination); s.start(0);
-  setTimeout(() => ctx && ctx.suspend(), 100); // lo dejamos en pausa hasta la alerta
+function prepararSonido() {
+  if (navigator.audioSession) { try { navigator.audioSession.type = "ambient"; } catch (e) {} }
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  ctx.resume();
 }
-async function sonar() {
+function sonar() {
   if (!ctx) return;
-  await ctx.resume();
+  ctx.resume();
+  const comp = ctx.createDynamicsCompressor(); comp.connect(ctx.destination);
   const t0 = ctx.currentTime;
-  [0, 0.35, 0.7].forEach((d) => { // tres pitidos
+  [0, 0.22, 0.44, 0.9, 1.12, 1.34].forEach((d) => {   // dos ráfagas de tres pitidos
     const o = ctx.createOscillator(), g = ctx.createGain();
-    o.frequency.value = 880; o.connect(g); g.connect(ctx.destination);
-    g.gain.setValueAtTime(0.0001, t0 + d); g.gain.exponentialRampToValueAtTime(0.8, t0 + d + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.25);
-    o.start(t0 + d); o.stop(t0 + d + 0.3);
+    o.type = "square"; o.frequency.value = 1320;
+    o.connect(g); g.connect(comp);
+    g.gain.setValueAtTime(0.0001, t0 + d); g.gain.exponentialRampToValueAtTime(1, t0 + d + 0.01);
+    g.gain.setValueAtTime(1, t0 + d + 0.14); g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.17);
+    o.start(t0 + d); o.stop(t0 + d + 0.18);
   });
-  setTimeout(() => ctx && ctx.suspend(), 1500);
   $("flash").style.display = "flex";
 }
 $("flash").onclick = () => ($("flash").style.display = "none");
 
-// ---------- Temporizador basado en la hora real ----------
-// No cuenta segundos: guarda la hora de fin y la compara con el reloj.
-function temporizador(segundos, elCuenta, alTerminar) {
+// Temporizador con la hora real (no se desfasa si bloqueás el teléfono)
+function temporizador(segundos, alTerminar) {
   const fin = Date.now() + segundos * 1000;
   const id = setInterval(() => {
     const falta = Math.ceil((fin - Date.now()) / 1000);
-    elCuenta.textContent = falta > 0 ? falta + " s" : "";
-    if (falta <= 0) { clearInterval(id); alTerminar(fin); }
+    $("cuenta").textContent = falta > 0 ? falta + " s" : "";
+    if (falta <= 0) { clearInterval(id); alTerminar(); }
   }, 250);
 }
 
-// ---------- Prueba 4: modos de audio ----------
-let modoActual = null;
-document.querySelectorAll("[data-modo]").forEach((b) => b.onclick = () => {
-  modoActual = b.dataset.modo;
-  $("preg4").hidden = true;
-  prepararSonido(modoActual);
-  temporizador(10, $("cuenta4"), () => { sonar(); $("preg4").hidden = false; });
-});
-document.querySelectorAll("[data-r]").forEach((b) => b.onclick = () => {
-  const nombre = { ambient: "A", transient: "B", playback: "C" }[modoActual];
-  res.audio[nombre] = b.dataset.r;
-  $("preg4").hidden = true;
-  marcar($("e-audio"), Object.entries(res.audio).map(([k, v]) => "Modo " + k + ": " + v).join(" · "), "ok");
-});
-
-// ---------- Prueba 5: pantalla bloqueada ----------
-$("b-bloq").onclick = () => {
-  prepararSonido("ambient");
-  marcar($("e-bloq"), "Ahora bloqueá el iPhone o andá a otra app…", "pend");
-  temporizador(30, $("cuenta5"), (fin) => {
-    const tarde = Math.round((Date.now() - fin) / 1000);
-    const oculto = document.visibilityState === "hidden";
-    sonar();
-    res.bloqueo = oculto ? "sonó en segundo plano (" + tarde + " s tarde)" :
-      tarde > 2 ? "no sonó en segundo plano; sonó al volver, " + tarde + " s tarde" : "sonó a tiempo con la app abierta (no se bloqueó)";
-    marcar($("e-bloq"), res.bloqueo, tarde > 2 ? "mal" : "ok");
-  });
+// ---------- 3. Descanso de prueba ----------
+$("b-descanso").onclick = async () => {
+  prepararSonido();
+  try {
+    const r = await fetch(SERVIDOR + "/programar", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        suscripcion,
+        avisos: [
+          { enSegundos: 20, titulo: "Quedan 10 segundos", texto: "Preparate: Serie 2 de Banco plano", etiqueta: "previo" },
+          { enSegundos: 30, titulo: "¡A entrenar!", texto: "Serie 2 de Banco plano: 60 kg × 8", etiqueta: "fin" },
+        ],
+      }),
+    });
+    if (!r.ok) throw new Error("El servidor respondió " + r.status);
+    marcar($("e-descanso"), "✓ Programado. Bloqueá el iPhone ahora", "ok");
+    temporizador(30, () => { if (document.visibilityState === "visible") sonar(); });
+  } catch (e) { marcar($("e-descanso"), "✗ No se pudo programar: " + e.message, "mal"); }
 };
 
-// ---------- Copiar resultados ----------
-$("b-copiar").onclick = async () => {
-  const txt = [
-    "RESULTADOS ETAPA 0",
-    "Dispositivo: " + navigator.userAgent,
-    "1. Instalada como app: " + (res.instalada ? "sí" : "no"),
-    "2. Sin internet: " + (res.offline || "sin datos"),
-    "3. Pantalla encendida: " + res.wake + " (wakeLock " + ("wakeLock" in navigator ? "disponible" : "no disponible") + ")",
-    "4. Audio (audioSession " + (navigator.audioSession ? "disponible" : "no disponible") + "):",
-    "   Modo A: " + (res.audio.A || "sin probar"),
-    "   Modo B: " + (res.audio.B || "sin probar"),
-    "   Modo C: " + (res.audio.C || "sin probar"),
-    "5. Pantalla bloqueada: " + res.bloqueo,
-  ].join("\n");
-  $("txt").value = txt; $("txt").hidden = false;
-  try { await navigator.clipboard.writeText(txt); $("b-copiar").textContent = "✓ Copiado. Pegalo en el chat"; }
-  catch (e) { $("txt").select(); $("b-copiar").textContent = "Seleccioná el texto y copialo"; }
-};
+// ---------- 4. Pitido ----------
+$("b-pitido").onclick = () => { prepararSonido(); setTimeout(sonar, 3000); };
 </script>
 </body>
 </html>
