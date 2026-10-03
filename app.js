@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 1 · v5";
+const VERSION_APP = "Etapa 1 · v6";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -204,7 +204,7 @@ const PANTALLAS = {
       <h2>${info.nombre}</h2>
       <img class="gif" src="${gifUrl(e)}" alt="Cómo se hace ${info.nombre}">
       <div class="atrib">${ATRIBUCION}</div>
-      <details><summary>Cómo se hace</summary><ol>${info.pasos.map((p) => `<li>${p}</li>`).join("")}</ol>
+      <details><summary>Cómo se hace</summary><button class="chico sec" data-accion="letra" style="margin:4px 0 8px">Aa  Cambiar tamaño de letra</button><ol>${info.pasos.map((p) => `<li>${p}</li>`).join("")}</ol>
         <p class="chico suave">Trabaja: <b>${NOMBRES_MUSCULOS[info.principal]}</b>${info.secundarios.length ? " · también " + info.secundarios.map((m) => NOMBRES_MUSCULOS[m]).join(", ") : ""}</p></details>
 
       <div class="tarjeta" style="margin-top:10px">
@@ -213,8 +213,8 @@ const PANTALLAS = {
       </div>
 
       ${hoy.length ? `<div class="tarjeta"><b>Hoy</b>${hoy.map((x) => `
-        <div class="serie"><span>Serie ${x.n}: <b>${kg(x.peso)} kg × ${x.reps}</b></span>
-        <button data-accion="borrar-serie" data-id="${x.id}" aria-label="Borrar">×</button></div>`).join("")}</div>` : ""}
+        <div class="serie editable" data-accion="editar-serie" data-id="${x.id}"><span>Serie ${x.n}: <b>${kg(x.peso)} kg × ${x.reps}</b></span>
+        <span class="lapiz">✎ Editar</span></div>`).join("")}</div>` : ""}
 
       <div class="tarjeta">
         <h2>${n <= r.series ? `Serie ${n} de ${r.series}` : `Serie extra (${n})`}</h2>
@@ -260,7 +260,7 @@ const PANTALLAS = {
           <p class="chico">${x.dosis}</p>
           ${ok ? "" : `<img class="gif" src="${gifUrl(x.e)}" alt="Cómo se hace ${info.nombre}" loading="lazy" style="width:150px;height:150px">
             <div class="atrib">${ATRIBUCION}</div>
-            <details><summary>Cómo se hace</summary><ol>${info.pasos.map((p) => `<li>${p}</li>`).join("")}</ol></details>
+            <details><summary>Cómo se hace</summary><button class="chico sec" data-accion="letra" style="margin:4px 0 8px">Aa  Cambiar tamaño de letra</button><ol>${info.pasos.map((p) => `<li>${p}</li>`).join("")}</ol></details>
             <div class="fila2">
               <button class="sec" data-accion="cal-timer" data-i="${i}">▶ Iniciar ${mmss(x.seg)}</button>
               <button data-accion="cal-hecho" data-i="${i}">Hecho</button>
@@ -320,7 +320,7 @@ const PANTALLAS = {
       <h2>${EJERCICIOS[e].nombre}</h2>
       <div class="tarjeta"><b>Peso máximo por sesión</b>${grafico(lista.map((x) => ({ x: x.fecha, y: x.max })), "kg")}</div>
       <div class="tarjeta">${lista.length ? lista.slice().reverse().map((x) => `
-        <div class="serie"><span>${fecha(x.fecha)}</span><span>${x.series.map((s) => kg(s.peso) + "×" + s.reps).join(" · ")}</span></div>`).join("")
+        <div class="serie"><span>${fecha(x.fecha)}</span><span>${x.series.map((s) => `<span class="chip" data-accion="editar-serie" data-id="${s.id}">${kg(s.peso)}×${s.reps}</span>`).join("")}</span></div>`).join("") + `<p class="chico suave">Tocá una serie para corregirla.</p>`
         : `<p class="suave">Todavía no hay registros.</p>`}</div>`;
   },
 
@@ -584,6 +584,66 @@ const ACCIONES = {
     mostrar("resumen");
   },
 
+  // ----- Editor de series (corregir peso o repeticiones ya cargadas) -----
+  async "editar-serie"(d) {
+    const x = await DB.get("series", d.id);
+    if (!x) return;
+    const pasos = (await ajuste("pasos")) || {};
+    E.ed = { serie: x, peso: x.peso, reps: x.reps, paso: pasos[x.ejercicio] || REGLAS.pasoPeso };
+    let ed = $("#editor");
+    if (!ed) { ed = document.createElement("div"); ed.id = "editor"; document.body.appendChild(ed); }
+    ed.innerHTML = `<div class="hoja">
+      <h2>Corregir serie ${x.n}</h2>
+      <p class="chico suave" style="margin-top:-4px">${EJERCICIOS[x.ejercicio].nombre} · ${fecha(x.hora)}</p>
+      <div class="ajuste">
+        <button class="sec" data-accion="ed-peso" data-d="-1">−</button>
+        <div class="valor"><b id="ed-peso" data-accion="ed-escribir">${kg(x.peso)}</b><span>kg · tocá para escribir</span></div>
+        <button class="sec" data-accion="ed-peso" data-d="1">+</button>
+      </div>
+      <div class="ajuste">
+        <button class="sec" data-accion="ed-reps" data-d="-1">−</button>
+        <div class="valor"><b id="ed-reps">${x.reps}</b><span>repeticiones</span></div>
+        <button class="sec" data-accion="ed-reps" data-d="1">+</button>
+      </div>
+      <button data-accion="ed-guardar">Guardar cambios</button>
+      <div class="fila2"><button class="sec" data-accion="ed-cancelar">Cancelar</button>
+        <button class="sec" data-accion="ed-borrar" data-confirmar="1">Borrar serie</button></div>
+    </div>`;
+    ed.hidden = false;
+  },
+  "ed-peso": (d) => { E.ed.peso = Math.max(0, Math.round((E.ed.peso + d.d * E.ed.paso) * 100) / 100); $("#ed-peso").textContent = kg(E.ed.peso); },
+  "ed-reps": (d) => { E.ed.reps = Math.max(1, E.ed.reps + +d.d); $("#ed-reps").textContent = E.ed.reps; },
+  "ed-escribir"() {
+    const b = $("#ed-peso"); if (b.querySelector("input")) return;
+    b.innerHTML = `<input type="text" inputmode="decimal" value="${kg(E.ed.peso)}" style="font-size:30px;text-align:center;margin:0;padding:4px">`;
+    const inp = b.querySelector("input"); inp.focus(); inp.select();
+    const listo = () => { const v = parseFloat(String(inp.value).replace(",", ".")); if (!isNaN(v) && v >= 0) E.ed.peso = v; b.textContent = kg(E.ed.peso); };
+    inp.addEventListener("blur", listo); inp.addEventListener("keydown", (ev) => { if (ev.key === "Enter") inp.blur(); });
+  },
+  "ed-cancelar": () => ($("#editor").hidden = true),
+  async "ed-guardar"() {
+    const inp = $("#ed-peso input"); if (inp) inp.blur();
+    const x = E.ed.serie; x.peso = E.ed.peso; x.reps = E.ed.reps;
+    await DB.put("series", x);
+    $("#editor").hidden = true; toast("Serie corregida");
+    E.valoresListos = true; PANTALLAS[E.pantalla]();
+  },
+  async "ed-borrar"() {
+    const x = E.ed.serie;
+    await DB.borrar("series", x.id);
+    const resto = (await DB.porIndice("series", "sesion", x.sesion)).filter((y) => y.ejercicio === x.ejercicio).sort((a, b) => a.n - b.n);
+    for (let i = 0; i < resto.length; i++) if (resto[i].n !== i + 1) { resto[i].n = i + 1; await DB.put("series", resto[i]); }
+    $("#editor").hidden = true; toast("Serie borrada");
+    E.valoresListos = true; PANTALLAS[E.pantalla]();
+  },
+  async letra() {
+    const tam = [20, 24, 28, 17];
+    const actual = (await ajuste("letra")) || 20;
+    const nuevo = tam[(tam.indexOf(actual) + 1) % tam.length];
+    await guardarAjuste("letra", nuevo); aplicarLetra(nuevo);
+    toast("Tamaño de letra: " + { 17: "chico", 20: "normal", 24: "grande", 28: "muy grande" }[nuevo]);
+  },
+
   "hist-ej": (d) => mostrar("historial", { histEj: d.e }),
   "hist-volver": () => mostrar("historial", { histEj: null }),
 
@@ -772,12 +832,15 @@ async function cancelarAvisos() {
 // =====================================================================
 // 5. ARRANQUE
 // =====================================================================
+function aplicarLetra(px) { document.documentElement.style.setProperty("--letra", px + "px"); }
+
 (async function arrancar() {
   if ("serviceWorker" in navigator) {
     try { await navigator.serviceWorker.register("sw.js"); registro = await navigator.serviceWorker.ready; } catch (e) {}
   }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
   await DB.abrir();
+  aplicarLetra((await ajuste("letra")) || 20);
   const perfil = await ajuste("perfil");
   if (!perfil || !perfil.nacimiento) return mostrar("config");
   const activa = (await DB.todos("sesiones")).find((s) => !s.fin);
