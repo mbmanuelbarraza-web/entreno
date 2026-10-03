@@ -580,3 +580,375 @@ const DIAS = {
   ]
  }
 };
+
+
+// ---------- Entrada en calor (unos 8 minutos, según los músculos del día) ----------
+// Estructura: activación general (bici) + movilidad específica + series de aproximación.
+// "temporizador": true muestra un botón con cuenta regresiva y aviso al terminar.
+Object.assign(EJERCICIOS, {
+ "bici": {
+  "nombre": "Bici fija",
+  "tipo": "calentamiento",
+  "principal": "cuadriceps",
+  "secundarios": [],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/2138-H1PESYI.gif",
+  "pasos": [
+   "Ajusta la altura y la posición del asiento para asegurar una alineación correcta.",
+   "Coloca los pies sobre los pedales y sujétalos con las correas si están disponibles.",
+   "Comienza a pedalear a un ritmo cómodo.",
+   "Mantén un ritmo constante y aumenta la resistencia según lo desees.",
+   "Activa los músculos del core para mantener la estabilidad y una postura correcta.",
+   "Continúa pedaleando durante la duración deseada de tu entrenamiento.",
+   "Disminuye gradualmente la resistencia y reduce la velocidad antes de detenerte por completo.",
+   "Estira las piernas y enfría después del entrenamiento."
+  ],
+  "original": "stationary bike run v. 3"
+ },
+ "estir_pecho_dinamico": {
+  "nombre": "Estiramiento dinámico de pecho",
+  "tipo": "calentamiento",
+  "principal": "pecho",
+  "secundarios": [
+   "hombros"
+  ],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/1167-3uj0Ozg.gif",
+  "pasos": [
+   "Ponte de pie con la espalda recta y los pies separados a la altura de los hombros.",
+   "Extiende los brazos hacia los lados, paralelos al suelo.",
+   "Lleva lentamente los brazos hacia adelante, cruzándolos frente al cuerpo.",
+   "Siente el estiramiento en los músculos del pecho.",
+   "Mantén el estiramiento durante 10-30 segundos.",
+   "Vuelve a la posición inicial y repite el número de repeticiones deseado."
+  ],
+  "original": "dynamic chest stretch (male)"
+ },
+ "flexiones_inclinadas": {
+  "nombre": "Flexiones de brazos inclinadas",
+  "tipo": "calentamiento",
+  "principal": "pecho",
+  "secundarios": [
+   "triceps",
+   "hombros"
+  ],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/0493-B1EVP9F.gif",
+  "pasos": [
+   "Coloca las manos sobre una superficie elevada, como un banco o un escalón, ligeramente más separadas que la altura de los hombros.",
+   "Extiende las piernas detrás de ti, apoyándote en la punta de los pies, formando una línea recta desde la cabeza hasta los talones.",
+   "Baja el pecho hacia la superficie elevada doblando los codos, manteniendo el cuerpo en línea recta.",
+   "Haz una pausa breve en la parte baja, luego empújate de nuevo hacia arriba a la posición inicial estirando los brazos.",
+   "Repite el número de repeticiones deseado."
+  ],
+  "original": "incline push-up"
+ },
+ "flexiones_escapulares": {
+  "nombre": "Flexiones escapulares",
+  "tipo": "calentamiento",
+  "principal": "hombros",
+  "secundarios": [
+   "pecho"
+  ],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/3021-jV65tKx.gif",
+  "pasos": [
+   "Comienza en una posición de plancha alta con las manos justo debajo de los hombros y el cuerpo en línea recta.",
+   "Baja el pecho hacia el suelo, manteniendo los codos cerca del cuerpo.",
+   "A medida que bajas, junta las escápulas y empuja el pecho hacia delante.",
+   "Haz una pausa por un momento en la posición baja, luego empuja de nuevo hacia arriba hasta la posición inicial.",
+   "Repite el número de repeticiones deseado."
+  ],
+  "original": "scapula push-up"
+ },
+ "rotacion_externa": {
+  "nombre": "Rotación externa de hombro en polea",
+  "tipo": "calentamiento",
+  "principal": "hombros",
+  "secundarios": [],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/0235-FWdVhcW.gif",
+  "pasos": [
+   "Ponte de pie con los pies separados a la altura de los hombros y las rodillas ligeramente flexionadas.",
+   "Sujeta el mango del cable con el brazo extendido frente a ti, paralelo al suelo.",
+   "Mantén el codo ligeramente flexionado y los omóplatos retraídos hacia atrás.",
+   "Rota lentamente el brazo hacia afuera, alejándolo de tu cuerpo, manteniendo el codo en la misma posición.",
+   "Haz una pausa por un momento al final del movimiento, luego regresa lentamente a la posición inicial.",
+   "Repite el número de repeticiones deseado."
+  ],
+  "original": "cable standing shoulder external rotation"
+ },
+ "dominadas_escapulares": {
+  "nombre": "Dominadas escapulares",
+  "tipo": "calentamiento",
+  "principal": "espalda",
+  "secundarios": [
+   "trapecios"
+  ],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/0688-uTBt1HV.gif",
+  "pasos": [
+   "Comienza colgándote de una barra de dominadas con las palmas hacia afuera y los brazos completamente extendidos.",
+   "Retrae las escápulas llevándolas hacia abajo y atrás.",
+   "Activa los músculos de la espalda y tira de tu cuerpo hacia la barra, enfocándote en juntar las escápulas.",
+   "Haz una pausa breve en la parte superior del movimiento, luego baja lentamente el cuerpo de vuelta a la posición inicial.",
+   "Repite el número de repeticiones deseado."
+  ],
+  "original": "scapular pull-up"
+ },
+ "vuelos_posteriores_livianos": {
+  "nombre": "Vuelos posteriores livianos",
+  "tipo": "calentamiento",
+  "principal": "hombros",
+  "secundarios": [
+   "espalda"
+  ],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/0383-EAs3xL9.gif",
+  "pasos": [
+   "Ponte de pie con los pies separados a la altura de los hombros y sostén una mancuerna en cada mano.",
+   "Flexiona ligeramente las rodillas e inclínate hacia adelante desde las caderas, manteniendo la espalda recta.",
+   "Extiende los brazos rectos hacia adelante, con las palmas mirándose entre sí.",
+   "Manteniendo una ligera flexión en los codos, levanta los brazos hacia los lados hasta que queden paralelos al suelo.",
+   "Haz una pausa por un momento en la parte superior, luego baja lentamente los brazos de vuelta a la posición inicial.",
+   "Repite el número de repeticiones deseado."
+  ],
+  "original": "dumbbell reverse fly"
+ },
+ "estir_dorsal": {
+  "nombre": "Estiramiento de dorsal arrodillado",
+  "tipo": "calentamiento",
+  "principal": "espalda",
+  "secundarios": [],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/1346-f38OEuO.gif",
+  "pasos": [
+   "Arrodíllate en el suelo con las rodillas separadas a la altura de las caderas y los dedos de los pies apuntando hacia atrás.",
+   "Extiende los brazos por encima de la cabeza y entrelaza los dedos.",
+   "Manteniendo la espalda recta, inclínate lentamente hacia el lado derecho, sintiendo un estiramiento en el dorsal izquierdo.",
+   "Mantén el estiramiento durante 20-30 segundos, luego vuelve a la posición inicial.",
+   "Repite el estiramiento en el lado izquierdo, inclinándote hacia la izquierda y sintiendo un estiramiento en el dorsal derecho.",
+   "Continúa alternando lados durante el número de repeticiones deseado."
+  ],
+  "original": "kneeling lat stretch"
+ },
+ "estir_triceps": {
+  "nombre": "Estiramiento de tríceps",
+  "tipo": "calentamiento",
+  "principal": "triceps",
+  "secundarios": [],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/0817-uOV3Itw.gif",
+  "pasos": [
+   "Ponte de pie o siéntate erguido con la espalda recta.",
+   "Extiende un brazo por encima de la cabeza, flexionándolo por el codo.",
+   "Coloca la mano opuesta sobre el codo flexionado y tira de él suavemente hacia tu cabeza.",
+   "Mantén el estiramiento de 15 a 30 segundos, sintiendo un estiramiento suave en el tríceps.",
+   "Suelta el estiramiento y repite con el otro brazo."
+  ],
+  "original": "triceps stretch"
+ },
+ "sentadilla_brazos_arriba": {
+  "nombre": "Sentadilla con brazos arriba",
+  "tipo": "calentamiento",
+  "principal": "cuadriceps",
+  "secundarios": [
+   "gluteos",
+   "hombros"
+  ],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/1685-QChZi3x.gif",
+  "pasos": [
+   "Ponte de pie con los pies separados a la altura de los hombros y los dedos de los pies ligeramente hacia afuera.",
+   "Baja el cuerpo hacia una posición de sentadilla flexionando las rodillas y empujando las caderas hacia atrás.",
+   "Mientras te levantas de la sentadilla, extiende los brazos por encima de la cabeza, alcanzando hacia el techo.",
+   "Vuelve a la posición inicial bajando los brazos y flexionando las rodillas para volver a hacer la sentadilla.",
+   "Repite el número de repeticiones deseado."
+  ],
+  "original": "squat to overhead reach"
+ },
+ "gran_estiramiento": {
+  "nombre": "Estiramiento completo de cadera (world's greatest stretch)",
+  "tipo": "calentamiento",
+  "principal": "isquios",
+  "secundarios": [
+   "gluteos",
+   "cuadriceps"
+  ],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/1604-DFGXwZr.gif",
+  "pasos": [
+   "Comienza en posición de zancada con el pie derecho adelante y el pie izquierdo atrás.",
+   "Coloca las manos en el suelo a ambos lados de tu pie derecho.",
+   "Baja la rodilla izquierda hacia el suelo y extiende la pierna derecha, manteniendo el pie derecho plano sobre el suelo.",
+   "Gira el torso hacia la derecha, extendiendo el brazo derecho hacia el techo.",
+   "Mantén esta posición durante unos segundos, luego vuelve a la posición inicial.",
+   "Cambia de lado y repite el estiramiento con el pie izquierdo adelante."
+  ],
+  "original": "world greatest stretch"
+ },
+ "puente_gluteos": {
+  "nombre": "Puente de glúteos",
+  "tipo": "calentamiento",
+  "principal": "gluteos",
+  "secundarios": [
+   "isquios"
+  ],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/3013-u0cNiij.gif",
+  "pasos": [
+   "Túmbate sobre tu espalda con las rodillas flexionadas y los pies apoyados en el suelo.",
+   "Coloca los brazos a los lados del cuerpo, con las palmas hacia abajo.",
+   "Activa los glúteos y el core, y luego eleva las caderas del suelo hasta que tu cuerpo forme una línea recta desde las rodillas hasta los hombros.",
+   "Haz una pausa breve en la parte alta, apretando los glúteos.",
+   "Baja lentamente las caderas de vuelta a la posición inicial.",
+   "Repite el número de repeticiones deseado."
+  ],
+  "original": "low glute bridge on floor"
+ },
+ "circulos_tobillo": {
+  "nombre": "Círculos de tobillo",
+  "tipo": "calentamiento",
+  "principal": "gemelos",
+  "secundarios": [],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/1368-uL9CsKm.gif",
+  "pasos": [
+   "Siéntate en el suelo con las piernas extendidas frente a ti.",
+   "Levanta una pierna del suelo y rota el tobillo con un movimiento circular.",
+   "Realiza el número de círculos deseado en una dirección, luego cambia a la dirección contraria.",
+   "Repite con la otra pierna."
+  ],
+  "original": "ankle circles"
+ }
+});
+
+const CALENTAMIENTO = {
+ "1": [
+  {
+   "e": "bici",
+   "dosis": "3 min, ritmo suave",
+   "seg": 180,
+   "temporizador": true
+  },
+  {
+   "e": "estir_pecho_dinamico",
+   "dosis": "30 segundos, abriendo y cerrando los brazos",
+   "seg": 30,
+   "temporizador": true
+  },
+  {
+   "e": "flexiones_inclinadas",
+   "dosis": "10 repeticiones, apoyando las manos en un banco",
+   "seg": 40,
+   "temporizador": false
+  },
+  {
+   "e": "flexiones_escapulares",
+   "dosis": "10 repeticiones",
+   "seg": 30,
+   "temporizador": false
+  },
+  {
+   "e": "rotacion_externa",
+   "dosis": "12 por brazo, muy liviano",
+   "seg": 60,
+   "temporizador": false
+  },
+  {
+   "e": "banco_plano",
+   "dosis": "Aproximación: barra sola × 12, después un 50% del peso de trabajo × 8",
+   "seg": 120,
+   "temporizador": false
+  }
+ ],
+ "2": [
+  {
+   "e": "bici",
+   "dosis": "3 min, ritmo suave",
+   "seg": 180,
+   "temporizador": true
+  },
+  {
+   "e": "dominadas_escapulares",
+   "dosis": "8 repeticiones, colgado de la barra",
+   "seg": 30,
+   "temporizador": false
+  },
+  {
+   "e": "vuelos_posteriores_livianos",
+   "dosis": "12 repeticiones con mancuernas de 3 kg",
+   "seg": 40,
+   "temporizador": false
+  },
+  {
+   "e": "estir_dorsal",
+   "dosis": "20 segundos por lado",
+   "seg": 40,
+   "temporizador": true
+  },
+  {
+   "e": "estir_triceps",
+   "dosis": "20 segundos por brazo",
+   "seg": 40,
+   "temporizador": true
+  },
+  {
+   "e": "dorsalera_abierto",
+   "dosis": "Aproximación: 2 series livianas de 12 y 8 (prepara para las dominadas)",
+   "seg": 120,
+   "temporizador": false
+  }
+ ],
+ "3": [
+  {
+   "e": "bici",
+   "dosis": "3 min, ritmo suave",
+   "seg": 180,
+   "temporizador": true
+  },
+  {
+   "e": "sentadilla_brazos_arriba",
+   "dosis": "10 repeticiones, lento",
+   "seg": 40,
+   "temporizador": false
+  },
+  {
+   "e": "gran_estiramiento",
+   "dosis": "3 por lado",
+   "seg": 60,
+   "temporizador": false
+  },
+  {
+   "e": "puente_gluteos",
+   "dosis": "12 repeticiones",
+   "seg": 40,
+   "temporizador": false
+  },
+  {
+   "e": "circulos_tobillo",
+   "dosis": "10 por lado",
+   "seg": 30,
+   "temporizador": false
+  },
+  {
+   "e": "sentadillas",
+   "dosis": "Aproximación: barra sola × 10, después un 50% del peso de trabajo × 6",
+   "seg": 120,
+   "temporizador": false
+  }
+ ]
+};
