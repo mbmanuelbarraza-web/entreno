@@ -1,8 +1,10 @@
 // Guarda la app en el teléfono para que funcione sin internet,
+// guarda los GIFs de los ejercicios la primera vez que se ven,
 // y muestra las notificaciones que manda el servidor de avisos.
 // Cada vez que cambiemos la app, subimos el número de VERSION.
-const VERSION = "etapa0b-v1";
-const ARCHIVOS = ["./", "./index.html", "./manifest.webmanifest", "./icon-180.png", "./icon-192.png", "./icon-512.png"];
+const VERSION = "etapa1-v1";
+const GIFS = "gifs-v1"; // los GIFs no se borran al actualizar la app
+const ARCHIVOS = ["./", "./index.html", "./estilos.css", "./app.js", "./datos.js", "./manifest.webmanifest", "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(ARCHIVOS)));
@@ -11,14 +13,25 @@ self.addEventListener("install", (e) => {
 
 self.addEventListener("activate", (e) => {
   e.waitUntil(
-    caches.keys().then((claves) => Promise.all(claves.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
+    caches.keys().then((claves) => Promise.all(claves.filter((k) => k !== VERSION && k !== GIFS).map((k) => caches.delete(k))))
   );
   self.clients.claim();
 });
 
-// Primero intenta internet (para recibir versiones nuevas); si no hay, usa lo guardado.
 self.addEventListener("fetch", (e) => {
-  if (e.request.method !== "GET" || new URL(e.request.url).origin !== location.origin) return;
+  if (e.request.method !== "GET") return;
+  const url = new URL(e.request.url);
+
+  // GIFs de ejercicios: primero lo guardado; si no está, se baja y se guarda
+  if (url.hostname === "raw.githubusercontent.com") {
+    e.respondWith(
+      caches.open(GIFS).then((c) => c.match(e.request).then((r) => r || fetch(e.request).then((resp) => { c.put(e.request, resp.clone()); return resp; })))
+    );
+    return;
+  }
+  if (url.origin !== location.origin) return;
+
+  // Archivos de la app: primero internet (para recibir versiones nuevas); si no hay, lo guardado
   e.respondWith(
     fetch(e.request)
       .then((r) => { const copia = r.clone(); caches.open(VERSION).then((c) => c.put(e.request, copia)); return r; })
