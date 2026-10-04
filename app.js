@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 1 · v7";
+const VERSION_APP = "Etapa 1 · v8";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -92,8 +92,20 @@ const fmtCorta = (x) => kg(x.peso) + (uSerie(x) === "lb" ? "lb" : "") + "×" + x
 // Peso real movido en kg (para el volumen): pasa libras a kg y cuenta las dos mancuernas
 const pesoKg = (x) => (uSerie(x) === "lb" ? x.peso * 0.4536 : x.peso) * (equipo(x.ejercicio) === "mancuernas2" ? 2 : 1);
 function etiquetaPeso(e, u) {
-  return { barra: "kg en total (barra + discos)", mancuernas2: "kg cada mancuerna", mancuerna1: "kg (una mancuerna)",
+  return { barra: "kg de discos (sin la barra)", mancuernas2: "kg cada mancuerna", mancuerna1: "kg (una mancuerna)",
     corporal: "kg extra", maquina: u === "lb" ? "lb (número de la máquina)" : "kg (número de la máquina)" }[equipo(e)];
+}
+
+// Recordatorio de cómo anotar el peso según el equipo
+function recordatorio(e, u) {
+  const t = {
+    barra: "Anotá <b>solo los discos</b>, sin contar la barra.",
+    mancuernas2: "Anotá el peso de <b>una</b> mancuerna (el número que dice). La app ya sabe que usás dos.",
+    mancuerna1: "Anotá el peso de la mancuerna que usás.",
+    maquina: `Cargá el <b>número que ves en la pila</b> de la máquina${u ? " (en " + (u === "lb" ? "libras" : "kilos") + ")" : ""}.`,
+    corporal: "Anotá solo el <b>peso extra</b> que agregás. Si lo hacés solo con tu cuerpo, dejalo en 0.",
+  }[equipo(e)];
+  return t ? `<p class="recordatorio">📌 ${t}</p>` : "";
 }
 
 // Estado en memoria
@@ -245,6 +257,7 @@ const PANTALLAS = {
       </div>` : `
       <div class="tarjeta">
         <h2>${n <= r.series ? `Serie ${n} de ${r.series}` : `Serie extra (${n})`}</h2>
+        ${recordatorio(e, u)}
         ${primeraVez ? `<p class="chico ok">Primera vez: tocá el número para escribir el peso, o usá + y −.</p>` : ""}
         <div class="ajuste">
           <button class="sec" data-accion="peso" data-d="-1">−</button>
@@ -631,6 +644,7 @@ const ACCIONES = {
     ed.innerHTML = `<div class="hoja">
       <h2>Corregir serie ${x.n}</h2>
       <p class="chico suave" style="margin-top:-4px">${EJERCICIOS[x.ejercicio].nombre} · ${fecha(x.hora)}</p>
+      ${recordatorio(x.ejercicio, uSerie(x))}
       <div class="ajuste">
         <button class="sec" data-accion="ed-peso" data-d="-1">−</button>
         <div class="valor"><b id="ed-peso" data-accion="ed-escribir">${kg(x.peso)}</b><span id="ed-u">${etiquetaPeso(x.ejercicio, uSerie(x))}</span><br><span class="chico suave">tocá el número para escribir</span>

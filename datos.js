@@ -954,7 +954,7 @@ const CALENTAMIENTO = {
 };
 
 // ---------- Equipo de cada ejercicio (define cómo se anota el peso) ----------
-// barra       = peso total: barra + discos
+// barra       = solo los discos, sin contar la barra (decidido por Manuel)
 // mancuernas2 = se anota el número de UNA mancuerna (se usan dos; la app muestra "c/u")
 // mancuerna1  = se usa una sola mancuerna
 // maquina     = la app pregunta una vez si la máquina marca kilos o libras, y se carga el número que se ve

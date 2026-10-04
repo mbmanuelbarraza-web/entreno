@@ -2,7 +2,7 @@
 // guarda los GIFs de los ejercicios la primera vez que se ven,
 // y muestra las notificaciones que manda el servidor de avisos.
 // Cada vez que cambiemos la app, subimos el número de VERSION.
-const VERSION = "etapa1-v7";
+const VERSION = "etapa1-v8";
 const GIFS = "gifs-v1"; // los GIFs no se borran al actualizar la app
 const ARCHIVOS = ["./", "./index.html", "./estilos.css", "./app.js", "./datos.js", "./manifest.webmanifest", "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 

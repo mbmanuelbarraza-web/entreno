@@ -76,3 +76,6 @@ body::before { content:""; position:fixed; top:0; left:0; right:0; height:env(sa
 #editor { position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:25; display:flex; align-items:flex-end; }
 #editor[hidden] { display:none; }
 #editor .hoja { background:var(--tarjeta); width:100%; border-radius:20px 20px 0 0; padding:18px 16px calc(env(safe-area-inset-bottom) + 18px); }
+
+/* Recordatorio de cómo anotar el peso */
+.recordatorio { background:rgba(249,115,22,.12); border-left:4px solid var(--naranja); border-radius:8px; padding:8px 10px; font-size:16px; color:var(--texto); margin:8px 0; }
