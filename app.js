@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 1 · v8";
+const VERSION_APP = "Etapa 2 · v1";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -143,11 +143,26 @@ const PANTALLAS = {
     const activa = sesiones.find((s) => !s.fin);
     const terminadas = sesiones.filter((s) => s.fin).sort((a, b) => b.inicio - a.inicio);
     const ultima = terminadas[0];
-    const sugerido = ultima ? (ultima.dia % 3) + 1 : 1;
+    const ultimaNormal = terminadas.find((x) => x.tipo !== "pendientes");
+    const sugerido = ultimaNormal ? (ultimaNormal.dia % 3) + 1 : 1;
     const dia = E.diaElegido || sugerido;
     const pesoAct = pesos.sort((a, b) => b.fecha - a.fecha)[0];
     const sinRespaldo = terminadas.length > 0 && (!ultResp || Date.now() - ultResp > 7 * 86400000);
     const notif = await estadoNotificaciones();
+    const plan = activa ? null : await planDelDia(DIAS[dia].ejercicios, REGLAS.limiteMin);
+    const pend = activa ? [] : await pendientesConEstado();
+    const pendListos = pend.filter((p) => p.listo <= Date.now() && !DIAS[dia].ejercicios.includes(p.e));
+    let planHtml = "";
+    if (plan) {
+      if (plan.entra) planHtml = `<p class="ok"><b>Estimado ≈ ${durTxt(plan.completo)}</b> · entra en tu límite de ${durTxt(REGLAS.limiteMin * 60)}</p>`;
+      else {
+        const cambios = Object.entries(plan.recortes).sort((a, b) => DIAS[dia].ejercicios.indexOf(a[0]) - DIAS[dia].ejercicios.indexOf(b[0])).map(([e, n]) => `${EJERCICIOS[e].nombre}: ${reglas(e).series - n} series en vez de ${reglas(e).series}`);
+        planHtml = `<p>Completo te llevaría <b class="mal">≈ ${durTxt(plan.completo)}</b>. Para entrar en ${durTxt(REGLAS.limiteMin * 60)}:</p>
+          <ul class="chico">${cambios.map((c) => `<li>${c}</li>`).join("")}${plan.pendientes.map((e) => `<li>${EJERCICIOS[e].nombre}: <b>queda pendiente para otro día</b></li>`).join("")}</ul>
+          <p class="ok chico">Plan ajustado ≈ ${durTxt(plan.ajustado)}</p>`;
+      }
+      planHtml += `<p class="chico suave">Calculado con tu ritmo real: ${Math.round(plan.rit.compuesto)} s por serie pesada y ${Math.round(plan.rit.aislamiento)} s por serie de aislamiento (además del descanso), ${Math.round(plan.rit.cambio / 60 * 10) / 10} min por cambio de ejercicio.</p>`;
+    }
 
     app.innerHTML = `
       <div class="cabecera"><span class="suave chico">${fechaLarga(Date.now())}</span>
@@ -158,15 +173,24 @@ const PANTALLAS = {
         <button class="sec" data-accion="ir" data-p="respaldo">Guardar respaldo</button></div>` : ""}
       ${activa ? `
         <div class="tarjeta"><h2>Entrenamiento en curso</h2>
-          <p>Día ${activa.dia} · ${DIAS[activa.dia].nombre}<br><span class="suave chico">Empezaste a las ${new Date(activa.inicio).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span></p>
+          <p>${tituloSesion(activa)} · ${nombreSesion(activa)}<br><span class="suave chico">Empezaste a las ${hora(activa.inicio)}</span></p>
           <button class="grande" data-accion="seguir">Seguir entrenando</button></div>` : `
         <h1>Hoy toca Día ${dia}</h1>
         <p class="suave" style="margin-top:0">${DIAS[dia].nombre}${dia !== sugerido ? " (elegido a mano)" : ""}</p>
         <div class="fila3 dias">${[1, 2, 3].map((d) => `<button class="sec ${d === dia ? "activo" : ""}" data-accion="elegir-dia" data-d="${d}">Día ${d}</button>`).join("")}</div>
         <div class="tarjeta" style="margin-top:12px">
-          ${DIAS[dia].ejercicios.map((e) => `<div class="chico">· ${EJERCICIOS[e].nombre} <span class="suave">${reglas(e).series}×${reglas(e).repsMin}-${reglas(e).repsMax}</span></div>`).join("")}
+          ${DIAS[dia].ejercicios.map((e) => `<div class="chico">· ${EJERCICIOS[e].nombre} <span class="suave">${plan.objetivos[e] || 0}×${reglas(e).repsMin}-${reglas(e).repsMax}</span></div>`).join("")}
         </div>
-        <button class="grande" data-accion="empezar" data-d="${dia}">Empezar</button>`}
+        <div class="tarjeta">${planHtml}</div>
+        ${plan.entra ? `<button class="grande" data-accion="empezar" data-d="${dia}" data-modo="completo">Empezar</button>` : `
+          <button class="grande" data-accion="empezar" data-d="${dia}" data-modo="ajustado">Empezar (plan ajustado)</button>
+          <button class="sec" data-accion="empezar" data-d="${dia}" data-modo="completo">Hacer todo (≈ ${durTxt(plan.completo)})</button>`}
+        ${pend.length ? `<div class="tarjeta" style="margin-top:12px"><b>Pendientes de otros días</b>
+          ${pend.map((p) => `<div class="serie"><span>${EJERCICIOS[p.e].nombre}<br>${cuandoTxt(p.listo)}</span>
+            <button data-accion="quitar-pendiente" data-id="${p.id}" data-confirmar="1" aria-label="Quitar">×</button></div>`).join("")}
+          <p class="chico suave">Se ofrecen cuando sus músculos ya descansaron (48 h el principal, 24 h los secundarios). Ideal para tu día libre.</p>
+          ${pendListos.length ? `<button class="sec" data-accion="empezar-pendientes">Entrenar solo pendientes listos (${pendListos.length})</button>` : ""}
+        </div>` : ""}`}
       <div class="fila2" style="margin-top:10px">
         <button class="sec" data-accion="ir" data-p="historial">Historial</button>
         <button class="sec" data-accion="ir" data-p="peso">Peso corporal</button>
@@ -195,7 +219,8 @@ const PANTALLAS = {
     app.innerHTML = `
       <div class="cabecera"><button class="volver" data-accion="ir" data-p="inicio">← Inicio</button>
         <span class="reloj" id="reloj-sesion">${mmss((Date.now() - s.inicio) / 1000)}</span></div>
-      <h1>Día ${s.dia}</h1><p class="suave" style="margin-top:0">${DIAS[s.dia].nombre}</p>
+      <h1>${tituloSesion(s)}</h1><p class="suave" style="margin-top:0">${nombreSesion(s)}</p>
+      <div class="tarjeta"><div id="proy">Calculando hora de fin…</div></div>
       <h3>Antes de empezar</h3>
       <div class="item ${s.bloques.calentamiento ? "hecho" : ""}" data-accion="ir" data-p="calentamiento">
         <img src="${gifUrl("bici")}" alt="" loading="lazy">
@@ -203,11 +228,11 @@ const PANTALLAS = {
         <span class="prog">${s.bloques.calentamiento === "hecho" ? "✓" : s.bloques.calentamiento ? "salteada" : "›"}</span></div>
       <h3>Ejercicios</h3>
       ${s.ejercicios.map((e) => {
-        const n = hechas(e), tot = reglas(e).series, salt = s.saltados.includes(e);
-        return `<div class="item ${n >= tot || salt ? "hecho" : ""}" data-accion="abrir-ej" data-e="${e}">
+        const n = hechas(e), tot = objetivo(s, e), salt = s.saltados.includes(e), mov = (s.movidos || []).includes(e);
+        return `<div class="item ${n >= tot || salt || mov ? "hecho" : ""}" data-accion="abrir-ej" data-e="${e}">
           <img src="${gifUrl(e)}" alt="" loading="lazy">
-          <div class="txt"><b>${EJERCICIOS[e].nombre}</b><span class="chico suave">${tot} series · ${reglas(e).repsMin}-${reglas(e).repsMax} reps</span></div>
-          <span class="prog">${salt ? "salteado" : n + "/" + tot}</span></div>`;
+          <div class="txt"><b>${EJERCICIOS[e].nombre}</b><span class="chico suave">${mov ? "pendiente para otro día" : `${tot} series · ${reglas(e).repsMin}-${reglas(e).repsMax} reps`}${tot < reglas(e).series && !mov ? " (ajustado)" : ""}</span></div>
+          <span class="prog">${mov ? "→ otro día" : salt ? "salteado" : n + "/" + tot}</span></div>`;
       }).join("")}
       <button class="${series.length ? "" : "sec"}" data-accion="terminar" id="b-terminar">Terminar entrenamiento</button>
       <button class="sec" data-accion="descartar" data-confirmar="1">Descartar entrenamiento (no se guarda)</button>`;
@@ -215,8 +240,9 @@ const PANTALLAS = {
 
   // ---------- Ejercicio ----------
   async ejercicio() {
-    const e = E.ejercicio, info = EJERCICIOS[e], r = reglas(e);
+    const e = E.ejercicio, info = EJERCICIOS[e];
     const s = await DB.get("sesiones", E.sesion);
+    const r = { ...reglas(e), series: objetivo(s, e) };
     const hoy = (await DB.porIndice("series", "sesion", s.id)).filter((x) => x.ejercicio === e).sort((a, b) => a.n - b.n);
     const ant = await seriesAnteriores(e, s.id);
     const u = await unidadDe(e);
@@ -242,7 +268,7 @@ const PANTALLAS = {
         <p class="chico suave">Trabaja: <b>${NOMBRES_MUSCULOS[info.principal]}</b>${info.secundarios.length ? " · también " + info.secundarios.map((m) => NOMBRES_MUSCULOS[m]).join(", ") : ""}</p></details>
 
       <div class="tarjeta" style="margin-top:10px">
-        <p class="chico"><b>Objetivo:</b> ${r.series} series de ${r.repsMin} a ${r.repsMax} reps · descanso ${mmss(r.descanso)}</p>
+        <p class="chico" id="proy" style="margin:0 0 6px"></p><p class="chico"><b>Objetivo:</b> ${r.series} series de ${r.repsMin} a ${r.repsMax} reps · descanso ${mmss(r.descanso)}</p>
         <p class="chico suave">${ant.series.length ? `Última vez (${fecha(ant.fecha)}): ${ant.series.map(fmtCorta).join(" · ")}${equipo(e) === "mancuernas2" ? " (c/u)" : ""}` : "Primera vez que lo registrás."}</p>
       </div>
 
@@ -322,9 +348,10 @@ const PANTALLAS = {
     const ejs = new Set(series.map((x) => x.ejercicio)).size;
     app.innerHTML = `
       <h1>¡Entrenamiento terminado!</h1>
-      <p class="suave">Día ${s.dia} · ${DIAS[s.dia].nombre}</p>
+      <p class="suave">${tituloSesion(s)} · ${nombreSesion(s)}</p>
       <div class="tarjeta">
-        <p>Duración: <b>${hhmm(s.fin - s.inicio)}</b> <span class="suave chico">(objetivo: 1 h 15 min)</span></p>
+        <p>Duración: <b class="${s.fin - s.inicio > (s.limite || REGLAS.limiteMin) * 60000 ? "mal" : "ok"}">${hhmm(s.fin - s.inicio)}</b> <span class="suave chico">(límite ${durTxt((s.limite || REGLAS.limiteMin) * 60)}${s.limite > (s.limiteOriginal || REGLAS.limiteMin) ? `, sumaste ${s.limite - s.limiteOriginal} min` : ""})</span></p>
+        ${(s.quedaronPendientes || []).length ? `<p>Quedan pendientes para otro día: <b>${s.quedaronPendientes.map((e) => EJERCICIOS[e].nombre).join(", ")}</b></p>` : ""}
         ${s.calInicio && s.calFin ? `<p>Entrada en calor: <b>${mmss((s.calFin - s.calInicio) / 1000)}</b> <span class="suave chico">(previsto ≈ ${Math.round(CALENTAMIENTO[s.dia].reduce((t, x) => t + x.seg, 0) / 60)} min)</span></p>` : ""}
         <p>Ejercicios: <b>${ejs}</b> · Series: <b>${series.length}</b></p>
         <p>Volumen total: <b>${kg(Math.round(vol))} kg</b> <span class="suave chico">(peso real × repeticiones, en kg)</span></p>
@@ -467,6 +494,16 @@ async function actualizarReloj() {
   if (!el || !E.sesion) return;
   const s = await DB.get("sesiones", E.sesion);
   if (s) el.textContent = mmss((Date.now() - s.inicio) / 1000);
+  const pr = $("#proy");
+  if (pr && s && !s.fin && Date.now() - (E.proyCache || 0) > 5000) {
+    E.proyCache = Date.now();
+    const p = await proyeccion(s);
+    const dif = Math.round((p.fin - p.limite) / 60000);
+    pr.innerHTML = p.faltanSeries
+      ? `Fin estimado <b class="${dif > 2 ? "mal" : dif > 0 ? "" : "ok"}">${hora(p.fin)}</b> · límite ${hora(p.limite)}${dif > 2 ? ` <span class="mal">(+${dif} min)</span>` : ""}`
+      : `Todo hecho · límite ${hora(p.limite)}`;
+    if (Date.now() >= p.limite && p.faltanSeries && document.visibilityState === "visible") revisarTiempo("limite");
+  }
   const cal = $("#cal-reloj");
   if (cal && s && s.calInicio) {
     const prev = Math.round(CALENTAMIENTO[s.dia].reduce((t, x) => t + x.seg, 0) / 60);
@@ -497,14 +534,36 @@ const ACCIONES = {
 
   async empezar(d) {
     const dia = +d.d;
-    const s = { id: nuevoId(), dia, inicio: Date.now(), fin: null, ejercicios: DIAS[dia].ejercicios.slice(), saltados: [], bloques: {}, opcion: "completa" };
+    const plan = await planDelDia(DIAS[dia].ejercicios, REGLAS.limiteMin);
+    const ajustado = d.modo === "ajustado";
+    const s = { id: nuevoId(), dia, inicio: Date.now(), fin: null, ejercicios: DIAS[dia].ejercicios.slice(), saltados: [], bloques: {},
+      opcion: ajustado ? "ajustado" : "completo", limite: REGLAS.limiteMin, limiteOriginal: REGLAS.limiteMin,
+      objetivos: ajustado ? plan.objetivos : null, movidos: ajustado ? plan.pendientes.slice() : [] };
     await DB.put("sesiones", s);
+    // los pendientes de este mismo día se hacen hoy: ya no hacen falta
+    await guardarPendientes((await leerPendientes()).filter((p) => !s.ejercicios.includes(p.e)));
     E.diaElegido = null;
+    await fijarLimiteActivo(s); programarAvisos([]);
     activarPantalla();
     mostrar("sesion", { sesion: s.id });
   },
+  async "empezar-pendientes"() {
+    const pend = (await pendientesConEstado()).filter((p) => p.listo <= Date.now());
+    if (!pend.length) return toast("No hay pendientes listos");
+    const s = { id: nuevoId(), tipo: "pendientes", dia: pend[0].dia, inicio: Date.now(), fin: null, ejercicios: pend.map((p) => p.e), saltados: [], bloques: {},
+      opcion: "completo", limite: REGLAS.limiteMin, limiteOriginal: REGLAS.limiteMin, objetivos: Object.fromEntries(pend.map((p) => [p.e, p.series])), movidos: [] };
+    await DB.put("sesiones", s);
+    await fijarLimiteActivo(s); programarAvisos([]);
+    activarPantalla();
+    mostrar("sesion", { sesion: s.id });
+  },
+  async "quitar-pendiente"(d) {
+    await guardarPendientes((await leerPendientes()).filter((p) => p.id !== d.id));
+    PANTALLAS.inicio();
+  },
   async seguir() {
     const activa = (await DB.todos("sesiones")).find((s) => !s.fin);
+    await fijarLimiteActivo(activa);
     activarPantalla();
     mostrar("sesion", { sesion: activa.id });
   },
@@ -539,11 +598,13 @@ const ACCIONES = {
     const series = await DB.porIndice("series", "sesion", E.sesion);
     for (const x of series) await DB.borrar("series", x.id);
     await DB.borrar("sesiones", E.sesion);
+    E.limiteActivo = null;
     cancelarDescanso(); soltarPantalla();
     E.sesion = null; toast("Entrenamiento descartado"); mostrar("inicio");
   },
   async "borrar-historial"() {
-    await DB.limpiar("series"); await DB.limpiar("sesiones"); await guardarAjuste("descanso", null);
+    await DB.limpiar("series"); await DB.limpiar("sesiones"); await guardarAjuste("descanso", null); await guardarPendientes([]);
+    E.limiteActivo = null;
     cancelarDescanso(); E.sesion = null;
     toast("Historial borrado"); mostrar("inicio");
   },
@@ -589,20 +650,22 @@ const ACCIONES = {
 
   async "confirmar-serie"() {
     prepararSonido();
-    const e = E.ejercicio, r = reglas(e);
+    const e = E.ejercicio;
     const s = await DB.get("sesiones", E.sesion);
+    const r = { ...reglas(e), series: objetivo(s, e) };
     const hoy = (await DB.porIndice("series", "sesion", s.id)).filter((x) => x.ejercicio === e);
     const n = hoy.length + 1;
     const unidad = (await unidadDe(e)) || "kg";
-    await DB.put("series", { id: nuevoId(), sesion: s.id, ejercicio: e, n, peso: E.peso, unidad, reps: E.reps, hora: Date.now() });
+    await DB.put("series", { id: nuevoId(), sesion: s.id, ejercicio: e, n, peso: E.peso, unidad, reps: E.reps, hora: Date.now(), descanso: r.descanso });
     if (s.calInicio && !s.calFin) s.calFin = Date.now();
     s.saltados = s.saltados.filter((x) => x !== e);
+    s.movidos = (s.movidos || []).filter((x) => x !== e);
     await DB.put("sesiones", s);
     // ¿Qué viene después?
     let prox, siguienteEj = null;
     if (n < r.series) prox = `Serie ${n + 1} de ${EJERCICIOS[e].nombre}: ${fmtPeso(E.peso, unidad, e)} × ${E.reps}`;
     else {
-      siguienteEj = s.ejercicios.slice(s.ejercicios.indexOf(e) + 1).find((x) => !s.saltados.includes(x));
+      siguienteEj = s.ejercicios.slice(s.ejercicios.indexOf(e) + 1).find((x) => !s.saltados.includes(x) && !s.movidos.includes(x));
       prox = siguienteEj ? `Ahora: ${EJERCICIOS[siguienteEj].nombre}` : "¡Último ejercicio terminado!";
     }
     if (siguienteEj) { E.ejercicio = siguienteEj; E.valoresListos = false; }
@@ -610,6 +673,7 @@ const ACCIONES = {
     await mostrar(n >= r.series && !siguienteEj ? "sesion" : "ejercicio");
     if (n < r.series || siguienteEj) empezarDescanso(r.descanso, prox);
     else toast("¡Terminaste todos los ejercicios! Tocá «Terminar entrenamiento».");
+    E.proyCache = 0; revisarTiempo("serie");
   },
   async "borrar-serie"(d) {
     await DB.borrar("series", d.id);
@@ -629,9 +693,47 @@ const ACCIONES = {
   async terminar() {
     if (!E.confirmarFin) { E.confirmarFin = true; $("#b-terminar").textContent = "Tocá de nuevo para confirmar"; return; }
     const s = await DB.get("sesiones", E.sesion);
-    s.fin = Date.now(); await DB.put("sesiones", s);
+    s.fin = Date.now();
+    const series = await DB.porIndice("series", "sesion", s.id);
+    const hechos = new Set(series.map((x) => x.ejercicio));
+    s.quedaronPendientes = s.ejercicios.filter((e) => !hechos.has(e));
+    await DB.put("sesiones", s);
+    // los pendientes que se hicieron hoy se borran; los ejercicios que no se hicieron pasan a pendientes
+    await guardarPendientes((await leerPendientes()).filter((p) => !hechos.has(p.e)));
+    await moverAPendientes(s, s.quedaronPendientes);
+    E.limiteActivo = null; cerrarHoja();
     cancelarDescanso(); soltarPantalla();
     mostrar("resumen");
+  },
+
+  // ----- Decisiones de tiempo -----
+  "min-extra": (d) => { E.minExtra = Math.min(120, Math.max(5, E.minExtra + +d.d)); $("#v-min").textContent = E.minExtra; },
+  async "tiempo-sumar"() {
+    const s = await DB.get("sesiones", E.sesion);
+    s.limite = (s.limite || REGLAS.limiteMin) + E.minExtra;
+    s.avisoProyeccion = null; await DB.put("sesiones", s);
+    await fijarLimiteActivo(s); programarAvisos(D.fin > Date.now() ? avisosDescanso() : []);
+    cerrarHoja(); E.proyCache = 0;
+    toast(`Sumaste ${E.minExtra} min: nuevo límite ${hora(s.inicio + s.limite * 60000)}`);
+    if (E.pantalla === "sesion" || E.pantalla === "ejercicio") PANTALLAS[E.pantalla]();
+  },
+  async "tiempo-ajustar"() {
+    const s = await DB.get("sesiones", E.sesion);
+    const p = await proyeccion(s);
+    const items = p.items.map((x) => ({ e: x.e, n: x.n, min: Math.max(0, REGLAS.minSeries[tipoDe(x.e)] - x.hechas), nuevo: x.hechas === 0 }));
+    const aj = ajustar(items, p.rit, Math.max(0, (p.limite - Date.now()) / 1000));
+    s.objetivos = s.objetivos || {};
+    for (const x of aj.items) s.objetivos[x.e] = (x.n || 0) + (p.items.find((y) => y.e === x.e).hechas);
+    s.movidos = [...new Set([...(s.movidos || []), ...aj.pendientes])];
+    s.opcion = "ajustado"; await DB.put("sesiones", s);
+    cerrarHoja(); E.proyCache = 0;
+    const nRec = Object.values(aj.recortes).reduce((t, n) => t + n, 0);
+    toast(`Ajustado: ${nRec} series menos${aj.pendientes.length ? " y " + aj.pendientes.length + " ejercicio(s) para otro día" : ""}`);
+    if (E.pantalla === "sesion" || E.pantalla === "ejercicio") { E.valoresListos = true; PANTALLAS[E.pantalla](); }
+  },
+  "tiempo-seguir": () => { cerrarHoja(); },
+  async "tiempo-terminar"() {
+    cerrarHoja(); E.confirmarFin = true; await ACCIONES.terminar();
   },
 
   // ----- Editor de series (corregir peso o repeticiones ya cargadas) -----
@@ -783,6 +885,13 @@ function empezarDescanso(segundos, texto, op = {}) {
   $("#descanso").hidden = false; $("#d-prox").textContent = texto;
   reprogramarDescanso();
 }
+function avisosDescanso() {
+  const falta = Math.round((D.fin - Date.now()) / 1000);
+  if (falta <= 0) return [];
+  const a = [{ enSegundos: falta, titulo: D.aviso || "¡A entrenar!", texto: D.texto, etiqueta: "fin" }];
+  if (falta > REGLAS.avisoPrevio) a.unshift({ enSegundos: falta - REGLAS.avisoPrevio, titulo: "Quedan 10 segundos", texto: D.texto, etiqueta: "previo" });
+  return a;
+}
 function reprogramarDescanso() {
   guardarAjuste("descanso", { fin: D.fin, texto: D.texto });
   const falta = Math.round((D.fin - Date.now()) / 1000);
@@ -875,14 +984,214 @@ async function programarAvisos(avisos) {
   try {
     const sus = registro && (await registro.pushManager.getSubscription());
     if (!sus) return;
+    avisos = avisos.concat(avisosLimite()); // los avisos de "quedan 10 min" y "llegaste al límite" siempre van
+    if (!avisos.length) return fetch(SERVIDOR + "/cancelar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ suscripcion: sus }) });
     await fetch(SERVIDOR + "/programar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ suscripcion: sus, avisos }) });
   } catch (e) { /* sin internet: queda el pitido dentro de la app */ }
 }
-async function cancelarAvisos() {
-  try {
-    const sus = registro && (await registro.pushManager.getSubscription());
-    if (sus) await fetch(SERVIDOR + "/cancelar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ suscripcion: sus }) });
-  } catch (e) {}
+// Cancela los avisos del descanso pero mantiene los del límite de tiempo
+async function cancelarAvisos() { await programarAvisos([]); }
+
+// =====================================================================
+// CONTROL DE TIEMPO Y PENDIENTES
+// - Mide tu ritmo real (cuánto tarda cada serie además del descanso, y cada cambio de ejercicio).
+// - Estima cuánto vas a tardar y, si no entra en el límite, arma un plan ajustado.
+// - Durante el entrenamiento proyecta la hora de fin y te pregunta qué hacer si no llegás.
+// - Lo que no se hace queda "pendiente" y se ofrece cuando los músculos ya descansaron.
+// =====================================================================
+const tipoDe = (e) => (EJERCICIOS[e].tipo === "compuesto" ? "compuesto" : "aislamiento");
+const mediana = (a) => { const b = a.slice().sort((x, y) => x - y), m = Math.floor(b.length / 2); return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+const objetivo = (s, e) => (s.objetivos && s.objetivos[e] != null ? s.objetivos[e] : reglas(e).series);
+const hora = (ts) => { const d = new Date(ts); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
+const durTxt = (seg) => hhmm(seg * 1000);
+const nombreSesion = (s) => (s.tipo === "pendientes" ? "Pendientes de otros días" : DIAS[s.dia].nombre);
+const tituloSesion = (s) => (s.tipo === "pendientes" ? "Pendientes" : "Día " + s.dia);
+
+// Ritmo real a partir del historial (si hay pocos datos, usa el ritmo inicial medido)
+async function ritmoReal() {
+  const series = (await DB.todos("series")).sort((a, b) => a.hora - b.hora);
+  const ov = { compuesto: [], aislamiento: [] }, cambio = [], cal = [];
+  const porSesion = {};
+  series.forEach((x) => (porSesion[x.sesion] = porSesion[x.sesion] || []).push(x));
+  for (const xs of Object.values(porSesion)) for (let i = 1; i < xs.length; i++) {
+    const a = xs[i - 1], b = xs[i]; if (!EJERCICIOS[a.ejercicio]) continue;
+    const t = tipoDe(a.ejercicio);
+    const desc = a.descanso != null ? a.descanso : t === "compuesto" ? 120 : 75; // series viejas: descansos de antes
+    const extra = (b.hora - a.hora) / 1000 - desc;
+    if (extra < 0 || extra > 600) continue; // pausas raras (una llamada, etc.) no cuentan
+    (a.ejercicio === b.ejercicio ? ov[t] : cambio).push(extra);
+  }
+  (await DB.todos("sesiones")).forEach((s) => { if (s.calInicio && s.calFin) cal.push((s.calFin - s.calInicio) / 1000); });
+  const R = REGLAS.ritmoInicial, med = (a, d) => (a.length >= 3 ? mediana(a) : d);
+  return { compuesto: med(ov.compuesto, R.compuesto), aislamiento: med(ov.aislamiento, R.aislamiento), cambio: med(cambio, R.cambio), calentamiento: med(cal, R.calentamiento) };
+}
+
+// Segundos para hacer una lista [{e, n}] en orden (n = series que faltan)
+function estimar(items, rit) {
+  let t = 0, cuantos = 0;
+  for (const { e, n } of items) {
+    if (n <= 0) continue;
+    t += n * (reglas(e).descanso + rit[tipoDe(e)]);
+    if (cuantos++ > 0) t += rit.cambio;
+  }
+  return t;
+}
+
+// Recorta para que entre en "disponible" segundos.
+// items: [{e, n, min}] → primero saca series de aislamiento (desde el final), después de los pesados,
+// y si igual no alcanza, los últimos ejercicios sin empezar quedan pendientes para otro día.
+function ajustar(items, rit, disponible) {
+  const it = items.map((x) => ({ ...x }));
+  let t = estimar(it, rit);
+  const recortes = {};
+  for (const tipo of ["aislamiento", "compuesto"]) {
+    let hubo = true;
+    while (t > disponible && hubo) {
+      hubo = false;
+      for (const x of it.slice().reverse()) {
+        if (t <= disponible) break;
+        if (tipoDe(x.e) !== tipo || x.n <= x.min) continue;
+        x.n--; recortes[x.e] = (recortes[x.e] || 0) + 1; t = estimar(it, rit); hubo = true;
+      }
+    }
+  }
+  const pendientes = [];
+  while (t > disponible) {
+    const vivos = it.filter((x) => x.n > 0 && x.nuevo);
+    if (vivos.length <= 1) break;
+    const x = vivos[vivos.length - 1]; pendientes.unshift(x.e); x.n = 0; t = estimar(it, rit);
+  }
+  return { items: it, t, recortes, pendientes };
+}
+
+// Plan para un día antes de empezar
+async function planDelDia(ejercicios, limiteMin) {
+  const rit = await ritmoReal();
+  const base = ejercicios.map((e) => ({ e, n: reglas(e).series, min: REGLAS.minSeries[tipoDe(e)], nuevo: true }));
+  const completo = rit.calentamiento + estimar(base, rit);
+  const aj = ajustar(base, rit, limiteMin * 60 - rit.calentamiento);
+  return { rit, completo, ajustado: rit.calentamiento + aj.t, recortes: aj.recortes, pendientes: aj.pendientes,
+    objetivos: Object.fromEntries(aj.items.map((x) => [x.e, x.n])), entra: completo <= limiteMin * 60 };
+}
+
+// Lo que falta de la sesión en curso
+async function faltante(s) {
+  const series = await DB.porIndice("series", "sesion", s.id);
+  const hechas = (e) => series.filter((x) => x.ejercicio === e).length;
+  const movidos = s.movidos || [];
+  return s.ejercicios.filter((e) => !s.saltados.includes(e) && !movidos.includes(e))
+    .map((e) => ({ e, hechas: hechas(e), n: Math.max(0, objetivo(s, e) - hechas(e)) }));
+}
+async function proyeccion(s) {
+  const rit = await ritmoReal();
+  const items = await faltante(s);
+  let seg = estimar(items, rit);
+  if (!s.bloques.calentamiento && s.tipo !== "pendientes") {
+    const llevo = s.calInicio ? (Date.now() - s.calInicio) / 1000 : 0;
+    seg += Math.max(0, rit.calentamiento - llevo);
+  }
+  const limite = s.inicio + (s.limite || REGLAS.limiteMin) * 60000;
+  return { fin: Date.now() + seg * 1000, limite, faltanSeries: items.reduce((t, x) => t + x.n, 0), rit, items };
+}
+
+// ---------- Recuperación muscular ----------
+async function ultimoTrabajo(excluirSesion) {
+  const prin = {}, total = {};
+  for (const x of await DB.todos("series")) {
+    if (x.sesion === excluirSesion) continue;
+    const ej = EJERCICIOS[x.ejercicio]; if (!ej) continue;
+    prin[ej.principal] = Math.max(prin[ej.principal] || 0, x.hora);
+    for (const m of [ej.principal, ...ej.secundarios]) total[m] = Math.max(total[m] || 0, x.hora);
+  }
+  return { prin, total };
+}
+// Desde cuándo se puede hacer un ejercicio: músculo principal 48 h desde que fue principal
+// (y 24 h desde cualquier trabajo); músculos secundarios 24 h.
+function listoDesde(e, ult) {
+  const ej = EJERCICIOS[e], H = 3600000, R = REGLAS.recuperacion;
+  let t = Math.max((ult.prin[ej.principal] || 0) + R.principalH * H, (ult.total[ej.principal] || 0) + R.secundarioH * H);
+  for (const m of ej.secundarios) t = Math.max(t, (ult.total[m] || 0) + R.secundarioH * H);
+  return t;
+}
+
+// ---------- Pendientes ----------
+async function leerPendientes() {
+  const lim = Date.now() - REGLAS.pendientesDias * 86400000;
+  return ((await ajuste("pendientes")) || []).filter((p) => p.desde > lim && EJERCICIOS[p.e]);
+}
+const guardarPendientes = (lista) => guardarAjuste("pendientes", lista);
+async function pendientesConEstado() {
+  const ult = await ultimoTrabajo();
+  return (await leerPendientes()).map((p) => ({ ...p, listo: listoDesde(p.e, ult) }));
+}
+function cuandoTxt(ts) {
+  if (ts <= Date.now()) return '<span class="ok">✓ listo para hoy</span>';
+  const d = new Date(ts), hoy = new Date();
+  const dia = d.toDateString() === hoy.toDateString() ? "hoy" : "el " + d.toLocaleDateString("es-AR", { weekday: "long" });
+  return `<span class="suave">listo ${dia} desde las ${hora(ts)}</span>`;
+}
+
+// ---------- Avisos de límite de tiempo (push) ----------
+function avisosLimite() {
+  const L = E.limiteActivo; if (!L) return [];
+  const fin = L.inicio + L.limite * 60000, ahora = Date.now(), out = [];
+  if (fin - 600000 > ahora) out.push({ enSegundos: Math.round((fin - 600000 - ahora) / 1000), titulo: "Quedan 10 minutos", texto: "Tu límite de entrenamiento es a las " + hora(fin), etiqueta: "limite10" });
+  if (fin > ahora) out.push({ enSegundos: Math.round((fin - ahora) / 1000), titulo: "Llegaste a tu límite de tiempo", texto: "Abrí la app para terminar o sumar minutos", etiqueta: "limite" });
+  return out;
+}
+async function fijarLimiteActivo(s) {
+  E.limiteActivo = s && !s.fin ? { inicio: s.inicio, limite: s.limite || REGLAS.limiteMin } : null;
+}
+
+// ---------- Hoja de decisión cuando no llegás ----------
+function hoja(html) {
+  let h = $("#hoja-tiempo");
+  if (!h) { h = document.createElement("div"); h.id = "hoja-tiempo"; h.className = "hoja-fondo"; document.body.appendChild(h); }
+  h.innerHTML = `<div class="hoja">${html}</div>`; h.hidden = false;
+}
+const cerrarHoja = () => { const h = $("#hoja-tiempo"); if (h) h.hidden = true; };
+
+async function revisarTiempo(motivo) {
+  if (!E.sesion) return;
+  const s = await DB.get("sesiones", E.sesion);
+  if (!s || s.fin) return;
+  const p = await proyeccion(s);
+  if (!p.faltanSeries) return;
+  const pasaMin = Math.round((p.fin - p.limite) / 60000);
+  const llegoAlLimite = Date.now() >= p.limite;
+  if (llegoAlLimite) {
+    if (s.avisoLimite === p.limite) return;
+    s.avisoLimite = p.limite; await DB.put("sesiones", s);
+    E.minExtra = Math.max(5, Math.ceil((p.fin - Date.now()) / 300000) * 5);
+    return hoja(`<h2>Llegaste a tu límite (${hora(p.limite)})</h2>
+      <p>Te faltan <b>${p.faltanSeries} series</b>, unos ${Math.max(1, Math.round((p.fin - Date.now()) / 60000))} min más.</p>
+      ${selectorMinutos()}
+      <button class="sec" data-accion="tiempo-terminar">Terminar ahora y dejar lo que falta pendiente</button>`);
+  }
+  if (pasaMin < 3 || s.avisoProyeccion === p.limite) return;
+  s.avisoProyeccion = p.limite; await DB.put("sesiones", s);
+  E.minExtra = Math.max(5, Math.ceil(pasaMin / 5) * 5);
+  hoja(`<h2>A este ritmo no llegás a tiempo</h2>
+    <p>Terminarías ≈ <b>${hora(p.fin)}</b>, ${pasaMin} min después de tu límite (${hora(p.limite)}).</p>
+    <button data-accion="tiempo-ajustar">Ajustar para llegar a las ${hora(p.limite)}</button>
+    <p class="chico suave">Recorta series de los últimos ejercicios; lo que no entre queda pendiente para otro día.</p>
+    ${selectorMinutos()}
+    <button class="sec" data-accion="tiempo-seguir">Seguir igual (te aviso al llegar al límite)</button>`);
+}
+function selectorMinutos() {
+  return `<div class="tarjeta" style="margin:10px 0"><b>Tengo más tiempo</b>
+    <div class="ajuste"><button class="sec" data-accion="min-extra" data-d="-5">−</button>
+      <div class="valor"><b id="v-min">${E.minExtra}</b><span>minutos más</span></div>
+      <button class="sec" data-accion="min-extra" data-d="5">+</button></div>
+    <button data-accion="tiempo-sumar">Sumar estos minutos</button></div>`;
+}
+// Mueve lo que no entra (o lo que falta) a pendientes de otro día
+async function moverAPendientes(s, ejercicios) {
+  if (!ejercicios.length) return;
+  const lista = await leerPendientes();
+  for (const e of ejercicios) if (!lista.some((p) => p.e === e))
+    lista.push({ id: nuevoId(), e, series: reglas(e).series, dia: s.tipo === "pendientes" ? (lista.find((p) => p.e === e) || {}).dia || s.dia : s.dia, desde: Date.now() });
+  await guardarPendientes(lista);
 }
 
 // =====================================================================
@@ -916,7 +1225,7 @@ function aplicarLetra(px) { document.documentElement.style.setProperty("--letra"
   const perfil = await ajuste("perfil");
   if (!perfil || !perfil.nacimiento) return mostrar("config");
   const activa = (await DB.todos("sesiones")).find((s) => !s.fin);
-  if (activa) E.sesion = activa.id;
+  if (activa) { E.sesion = activa.id; await fijarLimiteActivo(activa); }
   await mostrar("inicio");
   retomarDescanso();
 })();

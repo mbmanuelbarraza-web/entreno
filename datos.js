@@ -7,10 +7,19 @@ const ATRIBUCION = "© Gym visual — gymvisual.com";
 
 // Reglas (se pueden cambiar sin tocar el resto de la app)
 const REGLAS = {
-  compuesto:   { series: 4, repsMin: 6,  repsMax: 10, descanso: 120 },
-  aislamiento: { series: 3, repsMin: 10, repsMax: 15, descanso: 75 },
+  // Descansos: Emiliano indica 40" a 1'. En los pesados dejamos 1:30 porque rinden mejor con un poco más de pausa.
+  compuesto:   { series: 4, repsMin: 6,  repsMax: 10, descanso: 90 },
+  aislamiento: { series: 3, repsMin: 10, repsMax: 15, descanso: 60 },
   pasoPeso: 1,          // kg que suben/bajan los botones + y − (se cambia por ejercicio)
   avisoPrevio: 10,      // segundos antes del fin del descanso
+
+  // ---- Control de tiempo ----
+  limiteMin: 75,        // duración máxima del entrenamiento (1 h 15)
+  // Ritmo inicial medido en los entrenamientos del 3 y 5/10 (segundos). Después la app usa tu ritmo real.
+  ritmoInicial: { compuesto: 47, aislamiento: 63, cambio: 112, calentamiento: 600 },
+  minSeries: { aislamiento: 2, compuesto: 3 },   // si hay que recortar, nunca menos que esto
+  recuperacion: { principalH: 48, secundarioH: 24 }, // horas de descanso por músculo
+  pendientesDias: 8,    // un pendiente se descarta si pasan más de estos días
 };
 
 const NOMBRES_MUSCULOS = { pecho:"Pecho", espalda:"Espalda", biceps:"Bíceps", triceps:"Tríceps", hombros:"Hombros",
