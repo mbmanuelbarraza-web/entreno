@@ -978,3 +978,30 @@ const EQUIPO = {
 };
 const PASOS_KG = [0.5, 1, 1.25, 2, 2.5, 5, 10];
 const PASOS_LB = [2.5, 5, 10, 15, 20];
+
+// ---------- Cambios en la rutina ----------
+// 7/10: el gimnasio no tiene máquina de press de hombros → se reemplaza por press militar con barra (sentado),
+// que es además el ejercicio que Emiliano pone en ese lugar en la Rutina 2.
+EJERCICIOS.press_militar = {
+ "nombre": "Press militar con barra (sentado)",
+ "tipo": "compuesto",
+ "principal": "hombros",
+ "secundarios": [
+  "triceps",
+  "trapecios"
+ ],
+ "pesoCorporal": false,
+ "nota": "Reemplaza al press de hombros en máquina (no está en tu gimnasio)",
+ "gif": "videos/0091-kTbSH9h.gif",
+ "pasos": [
+  "Siéntate en un banco con la espalda recta y los pies planos sobre el suelo.",
+  "Sujeta la barra con un agarre pronado, un poco más ancho que la separación de los hombros.",
+  "Levanta la barra del soporte y llévala a la altura de los hombros, con los codos flexionados y las palmas hacia delante.",
+  "Empuja la barra por encima de la cabeza extendiendo completamente los brazos.",
+  "Haz una pausa breve en la parte alta y luego baja lentamente la barra de vuelta a la altura de los hombros.",
+  "Repite el número de repeticiones deseado."
+ ],
+ "original": "barbell seated overhead press"
+};
+EQUIPO.press_militar = "barra";
+DIAS[3].ejercicios = DIAS[3].ejercicios.map((e) => (e === "press_hombros_maquina" ? "press_militar" : e));

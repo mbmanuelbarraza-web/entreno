@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 2 · v1";
+const VERSION_APP = "Etapa 2 · v2";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -663,7 +663,11 @@ const ACCIONES = {
     await DB.put("sesiones", s);
     // ¿Qué viene después?
     let prox, siguienteEj = null;
-    if (n < r.series) prox = `Serie ${n + 1} de ${EJERCICIOS[e].nombre}: ${fmtPeso(E.peso, unidad, e)} × ${E.reps}`;
+    let ultima = false;
+    if (n < r.series) {
+      ultima = n + 1 === r.series;
+      prox = `${ultima ? `Última serie (${n + 1} de ${r.series})` : `Serie ${n + 1} de ${r.series}`} · ${EJERCICIOS[e].nombre}: ${fmtPeso(E.peso, unidad, e)} × ${E.reps}`;
+    }
     else {
       siguienteEj = s.ejercicios.slice(s.ejercicios.indexOf(e) + 1).find((x) => !s.saltados.includes(x) && !s.movidos.includes(x));
       prox = siguienteEj ? `Ahora: ${EJERCICIOS[siguienteEj].nombre}` : "¡Último ejercicio terminado!";
@@ -671,7 +675,7 @@ const ACCIONES = {
     if (siguienteEj) { E.ejercicio = siguienteEj; E.valoresListos = false; }
     else E.valoresListos = true; // mantiene peso y reps para la próxima serie
     await mostrar(n >= r.series && !siguienteEj ? "sesion" : "ejercicio");
-    if (n < r.series || siguienteEj) empezarDescanso(r.descanso, prox);
+    if (n < r.series || siguienteEj) empezarDescanso(r.descanso, prox, ultima ? { aviso: "¡Última serie de este ejercicio!", ultima: true } : {});
     else toast("¡Terminaste todos los ejercicios! Tocá «Terminar entrenamiento».");
     E.proyCache = 0; revisarTiempo("serie");
   },
@@ -827,6 +831,13 @@ const ACCIONES = {
 
   "descanso-mas": () => { D.fin += 15000; reprogramarDescanso(); },
   "descanso-saltear": () => cancelarDescanso(),
+  "descanso-ver"(d) {
+    $("#descanso").hidden = true;
+    $("#mini-tit").textContent = D.titulo || "Descanso";
+    $("#mini-descanso").hidden = false; document.body.classList.add("con-mini");
+    mostrar(d.v === "lista" ? "sesion" : d.v === "calentamiento" ? "calentamiento" : "ejercicio");
+  },
+  "descanso-volver"() { ocultarMini(); $("#descanso").hidden = false; },
   "cerrar-flash": () => ($("#flash").hidden = true),
 };
 
@@ -879,7 +890,14 @@ function empezarDescanso(segundos, texto, op = {}) {
   D.fin = Date.now() + segundos * 1000; D.texto = texto;
   D.aviso = op.aviso || "¡A entrenar!";
   D.alTerminar = op.alTerminar || null;
-  $(".d-titulo").textContent = op.titulo || "Descanso";
+  D.titulo = op.titulo || "Descanso";
+  D.esCal = !!op.alTerminar;
+  $(".d-titulo").textContent = D.titulo;
+  $("#d-prox").classList.toggle("ultima", !!op.ultima);
+  $("#d-ver-ej").hidden = D.esCal;
+  $("#d-ver-lista").textContent = D.esCal ? "Ver entrada en calor" : "Ver lista del día";
+  $("#d-ver-lista").dataset.v = D.esCal ? "calentamiento" : "lista";
+  $("#d-ver-lista").parentElement.className = D.esCal ? "" : "fila2";
   $("[data-accion=descanso-saltear]").textContent = op.titulo ? "Terminar" : "Saltear descanso";
   guardarAjuste("descanso", { fin: D.fin, texto });
   $("#descanso").hidden = false; $("#d-prox").textContent = texto;
@@ -902,16 +920,18 @@ function reprogramarDescanso() {
   const tic = () => {
     const f = (D.fin - Date.now()) / 1000;
     $("#d-reloj").textContent = mmss(f);
+    $("#mini-reloj").textContent = mmss(f);
     if (f <= 0) {
-      clearInterval(D.timer); $("#descanso").hidden = true; guardarAjuste("descanso", null);
+      clearInterval(D.timer); $("#descanso").hidden = true; ocultarMini(); guardarAjuste("descanso", null);
       if (D.alTerminar) { const f = D.alTerminar; D.alTerminar = null; f(); }
-      if (document.visibilityState === "visible" && Date.now() - D.fin < 3000) { sonar(); $("#flash-txt").textContent = D.texto; $("#flash").hidden = false; }
+      if (document.visibilityState === "visible" && Date.now() - D.fin < 3000) { sonar(); $("#flash-tit").textContent = D.aviso || "¡A entrenar!"; $("#flash-txt").textContent = D.texto; $("#flash").hidden = false; }
     }
   };
   tic(); D.timer = setInterval(tic, 250);
 }
+function ocultarMini() { $("#mini-descanso").hidden = true; document.body.classList.remove("con-mini"); }
 function cancelarDescanso() {
-  clearInterval(D.timer); $("#descanso").hidden = true; guardarAjuste("descanso", null);
+  clearInterval(D.timer); $("#descanso").hidden = true; ocultarMini(); guardarAjuste("descanso", null);
   if (D.alTerminar) { const f = D.alTerminar; D.alTerminar = null; f(); } // "Terminar" antes de tiempo también cuenta como hecho
   cancelarAvisos();
 }
@@ -919,8 +939,8 @@ function cancelarDescanso() {
 async function retomarDescanso() {
   const d = await ajuste("descanso");
   if (d && d.fin > Date.now()) { D.fin = d.fin; D.texto = d.texto; $("#descanso").hidden = false; $("#d-prox").textContent = d.texto;
-    clearInterval(D.timer); D.timer = setInterval(() => { const f = (D.fin - Date.now()) / 1000; $("#d-reloj").textContent = mmss(f);
-      if (f <= 0) { clearInterval(D.timer); $("#descanso").hidden = true; guardarAjuste("descanso", null); } }, 250); }
+    clearInterval(D.timer); D.timer = setInterval(() => { const f = (D.fin - Date.now()) / 1000; $("#d-reloj").textContent = mmss(f); $("#mini-reloj").textContent = mmss(f);
+      if (f <= 0) { clearInterval(D.timer); $("#descanso").hidden = true; ocultarMini(); guardarAjuste("descanso", null); } }, 250); }
 }
 
 // Pitido (se mezcla con Spotify)

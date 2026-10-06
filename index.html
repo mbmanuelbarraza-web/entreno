@@ -25,10 +25,18 @@
     <button class="sec" data-accion="descanso-mas">+15 s</button>
     <button data-accion="descanso-saltear">Saltear descanso</button>
   </div>
+  <div class="fila2">
+    <button class="sec" data-accion="descanso-ver" data-v="ejercicio" id="d-ver-ej">Ver próximo ejercicio</button>
+    <button class="sec" data-accion="descanso-ver" data-v="lista" id="d-ver-lista">Ver lista del día</button>
+  </div>
+  <p class="chico suave">El descanso sigue corriendo y te avisa igual.</p>
 </div>
 
+<!-- Descanso minimizado (mientras mirás otra pantalla) -->
+<div id="mini-descanso" hidden data-accion="descanso-volver"><span id="mini-tit">Descanso</span> <b id="mini-reloj">0:00</b> · tocá para volver</div>
+
 <!-- Aviso de fin de descanso -->
-<div id="flash" hidden data-accion="cerrar-flash">¡A entrenar!<small id="flash-txt"></small><small>Tocá para cerrar</small></div>
+<div id="flash" hidden data-accion="cerrar-flash"><span id="flash-tit">¡A entrenar!</span><small id="flash-txt"></small><small>Tocá para cerrar</small></div>
 
 <!-- Mensajes cortos -->
 <div id="toast" hidden></div>
