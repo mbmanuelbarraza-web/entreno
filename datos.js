@@ -1005,3 +1005,217 @@ EJERCICIOS.press_militar = {
 };
 EQUIPO.press_militar = "barra";
 DIAS[3].ejercicios = DIAS[3].ejercicios.map((e) => (e === "press_hombros_maquina" ? "press_militar" : e));
+
+// 10/10: Emiliano confirmó que los vuelos van SEPARADOS → 3 ejercicios con su propio GIF.
+Object.assign(EJERCICIOS, {
+ "vuelos_laterales": {
+  "nombre": "Vuelos laterales",
+  "tipo": "aislamiento",
+  "principal": "hombros",
+  "secundarios": [
+   "trapecios"
+  ],
+  "pesoCorporal": false,
+  "nota": "",
+  "gif": "videos/0334-DsgkuIt.gif",
+  "pasos": [
+   "Ponte de pie con los pies separados a la altura de los hombros y sostén una mancuerna en cada mano, con las palmas hacia el cuerpo.",
+   "Mantén la espalda recta y activa el core.",
+   "Levanta los brazos hacia los lados hasta que queden paralelos al suelo, manteniendo una ligera flexión en los codos.",
+   "Haz una pausa por un momento en la parte superior, luego baja lentamente los brazos de vuelta a la posición inicial.",
+   "Repite el número de repeticiones deseado."
+  ],
+  "original": "dumbbell lateral raise",
+  "series": 3
+ },
+ "vuelos_frontales": {
+  "nombre": "Vuelos frontales",
+  "tipo": "aislamiento",
+  "principal": "hombros",
+  "secundarios": [
+   "pecho"
+  ],
+  "pesoCorporal": false,
+  "nota": "Los press ya trabajan mucho esta parte del hombro: por eso lleva menos series",
+  "gif": "videos/0310-3eGE2JC.gif",
+  "pasos": [
+   "Ponte de pie con los pies separados a la altura de los hombros, sosteniendo una mancuerna en cada mano con las palmas hacia los muslos.",
+   "Manteniendo los brazos rectos, exhala y levanta las mancuernas frente a ti hasta que queden a la altura de los hombros.",
+   "Haz una pausa por un momento en la parte superior, luego inhala y baja lentamente las mancuernas de vuelta a la posición inicial.",
+   "Repite el número de repeticiones deseado."
+  ],
+  "original": "dumbbell front raise",
+  "series": 2
+ },
+ "vuelos_posteriores": {
+  "nombre": "Vuelos posteriores",
+  "tipo": "aislamiento",
+  "principal": "hombros",
+  "secundarios": [
+   "espalda",
+   "trapecios"
+  ],
+  "pesoCorporal": false,
+  "nota": "",
+  "gif": "videos/0380-v1qBec9.gif",
+  "pasos": [
+   "Ponte de pie con los pies separados a la altura de los hombros y sostén una mancuerna en cada mano, con las palmas hacia el cuerpo.",
+   "Flexiona ligeramente las rodillas e inclínate hacia adelante desde las caderas, manteniendo la espalda recta y el core activado.",
+   "Levanta los brazos hacia los lados, manteniendo una ligera flexión en los codos, hasta que queden paralelos al suelo.",
+   "Haz una pausa por un momento en la parte superior, luego baja lentamente los brazos de vuelta a la posición inicial.",
+   "Repite el número de repeticiones deseado."
+  ],
+  "original": "dumbbell rear lateral raise",
+  "series": 3
+ },
+ "flexiones": {
+  "nombre": "Flexiones de brazos",
+  "tipo": "compuesto",
+  "principal": "pecho",
+  "secundarios": [
+   "triceps",
+   "hombros"
+  ],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/0662-I4hDWkc.gif",
+  "pasos": [
+   "Comienza en una posición de plancha alta con las manos un poco más separadas que la anchura de los hombros y los pies juntos.",
+   "Activa el core y baja el cuerpo hacia el suelo flexionando los codos, manteniendo el cuerpo en línea recta.",
+   "Haz una pausa cuando el pecho esté justo por encima del suelo y luego empújate de vuelta a la posición inicial estirando los brazos.",
+   "Repite el número de repeticiones deseado."
+  ],
+  "original": "push-up"
+ },
+ "remo_invertido": {
+  "nombre": "Remo invertido (bajo una mesa o barra baja)",
+  "tipo": "compuesto",
+  "principal": "espalda",
+  "secundarios": [
+   "biceps"
+  ],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/0499-bZGHsAZ.gif",
+  "pasos": [
+   "Coloca una barra a la altura de la cintura o usa un entrenador de suspensión.",
+   "Ponte de pie frente a la barra o al entrenador de suspensión, con los pies separados a la altura de los hombros.",
+   "Agarra la barra o las asas con agarre prono, ligeramente más ancho que la altura de los hombros.",
+   "Inclínate hacia atrás, manteniendo el cuerpo recto y los talones en el suelo.",
+   "Tira del pecho hacia la barra o las asas, apretando los omóplatos entre sí.",
+   "Haz una pausa breve en la parte más alta, luego baja lentamente de vuelta a la posición inicial.",
+   "Repite el número de repeticiones deseado."
+  ],
+  "original": "inverted row"
+ },
+ "sentadilla_corporal": {
+  "nombre": "Sentadilla con peso corporal",
+  "tipo": "compuesto",
+  "principal": "cuadriceps",
+  "secundarios": [
+   "gluteos"
+  ],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/1685-QChZi3x.gif",
+  "pasos": [
+   "Ponte de pie con los pies separados a la altura de los hombros y los dedos de los pies ligeramente hacia afuera.",
+   "Baja el cuerpo hacia una posición de sentadilla flexionando las rodillas y empujando las caderas hacia atrás.",
+   "Mientras te levantas de la sentadilla, extiende los brazos por encima de la cabeza, alcanzando hacia el techo.",
+   "Vuelve a la posición inicial bajando los brazos y flexionando las rodillas para volver a hacer la sentadilla.",
+   "Repite el número de repeticiones deseado."
+  ],
+  "original": "squat to overhead reach"
+ },
+ "estocadas_caminando": {
+  "nombre": "Estocadas caminando",
+  "tipo": "compuesto",
+  "principal": "cuadriceps",
+  "secundarios": [
+   "gluteos",
+   "isquios"
+  ],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/1460-IZVHb27.gif",
+  "pasos": [
+   "Ponte de pie con los pies separados a la altura de los hombros.",
+   "Da un paso adelante con la pierna derecha, bajando el cuerpo a una posición de zancada.",
+   "Mantén el torso erguido y la rodilla delantera alineada con el tobillo.",
+   "Empújate con el pie derecho y lleva el pie izquierdo hacia adelante, entrando en una posición de zancada con la pierna izquierda.",
+   "Continúa alternando las piernas y avanzando, manteniendo un ritmo controlado y constante.",
+   "Repite el número de repeticiones deseado."
+  ],
+  "original": "walking lunge"
+ },
+ "fondos_banco": {
+  "nombre": "Fondos en banco o silla",
+  "tipo": "aislamiento",
+  "principal": "triceps",
+  "secundarios": [
+   "hombros"
+  ],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/0129-RrLske5.gif",
+  "pasos": [
+   "Siéntate en el borde de un banco o silla con las manos sujetando el borde junto a las caderas.",
+   "Desliza los glúteos fuera del banco y estira las piernas frente a ti, manteniendo los talones en el suelo.",
+   "Flexiona los codos y baja el cuerpo hacia el suelo, manteniendo la espalda cerca del banco.",
+   "Haz una pausa por un momento en la parte inferior, luego empuja tu cuerpo de vuelta a la posición inicial.",
+   "Repite el número de repeticiones deseado."
+  ],
+  "original": "bench dip (knees bent)"
+ },
+ "gemelos_parado": {
+  "nombre": "Gemelos parado",
+  "tipo": "aislamiento",
+  "principal": "gemelos",
+  "secundarios": [],
+  "pesoCorporal": true,
+  "nota": "",
+  "gif": "videos/1373-bJYHBIN.gif",
+  "pasos": [
+   "Ponte de pie con los pies separados a la altura de los hombros, con las puntas de los pies apuntando hacia adelante.",
+   "Coloca las manos sobre una pared o superficie estable para mantener el equilibrio.",
+   "Levanta lentamente los talones del suelo, llevando el peso del cuerpo hacia las puntas de los pies.",
+   "Haz una pausa breve en la parte alta y luego baja lentamente los talones de vuelta a la posición inicial.",
+   "Repite el número de repeticiones deseado."
+  ],
+  "original": "bodyweight standing calf raise"
+ }
+});
+Object.assign(EQUIPO, { vuelos_laterales: "mancuernas2", vuelos_frontales: "mancuernas2", vuelos_posteriores: "mancuernas2",
+  flexiones: "corporal", remo_invertido: "corporal", sentadilla_corporal: "corporal", estocadas_caminando: "corporal",
+  fondos_banco: "corporal", gemelos_parado: "corporal", puente_gluteos: "corporal" });
+DIAS[3].ejercicios = DIAS[3].ejercicios.flatMap((e) => (e === "vuelos" ? ["vuelos_laterales", "vuelos_frontales", "vuelos_posteriores"] : [e]));
+
+// ---------- Rutinas especiales (las ofrece la app según lo que te pase) ----------
+// Mantenimiento: 2 días por semana, cuerpo completo, ~45 min. Alcanza para no perder lo ganado
+// mientras tenés menos tiempo. "series" fija cuántas series lleva cada ejercicio en esa rutina.
+DIAS.MA = { nombre: "Mantenimiento A · cuerpo completo", especial: "mantenimiento",
+  ejercicios: ["banco_plano", "dorsalera_abierto", "sentadillas", "press_militar", "biceps_barra_w", "triceps_polea"],
+  series: { banco_plano: 3, dorsalera_abierto: 3, sentadillas: 3, press_militar: 2, biceps_barra_w: 2, triceps_polea: 2 } };
+DIAS.MB = { nombre: "Mantenimiento B · cuerpo completo", especial: "mantenimiento",
+  ejercicios: ["banco_inclinado", "remo_maquina", "estocadas", "vuelos_laterales", "biceps_mancuernas", "fondos"],
+  series: { banco_inclinado: 3, remo_maquina: 3, estocadas: 3, vuelos_laterales: 2, biceps_mancuernas: 2, fondos: 2 } };
+// Viaje: sin gimnasio, solo con el cuerpo, ~30 min
+DIAS.V = { nombre: "Rutina de viaje · sin gimnasio", especial: "viaje",
+  ejercicios: ["flexiones", "remo_invertido", "sentadilla_corporal", "estocadas_caminando", "fondos_banco", "puente_gluteos", "gemelos_parado"],
+  series: { flexiones: 3, remo_invertido: 3, sentadilla_corporal: 3, estocadas_caminando: 2, fondos_banco: 2, puente_gluteos: 2, gemelos_parado: 2 } };
+const ENTRADA_GENERAL = [
+  { e: "bici", dosis: "3 min, ritmo suave (en viaje: trote suave en el lugar)", seg: 180, temporizador: true },
+  { e: "sentadilla_brazos_arriba", dosis: "10 repeticiones, lento", seg: 40 },
+  { e: "flexiones_inclinadas", dosis: "10 repeticiones", seg: 40 },
+  { e: "gran_estiramiento", dosis: "3 por lado", seg: 60 },
+];
+CALENTAMIENTO.MA = ENTRADA_GENERAL.concat([{ e: "banco_plano", dosis: "Aproximación: barra sola × 12, después un 50% × 8", seg: 120 }]);
+CALENTAMIENTO.MB = ENTRADA_GENERAL.concat([{ e: "banco_inclinado", dosis: "Aproximación: 2 series livianas de 12 y 8", seg: 120 }]);
+CALENTAMIENTO.V = ENTRADA_GENERAL.slice();
+
+// ---------- Entrenador ----------
+REGLAS.volumen = { min: 10, max: 20 };   // series efectivas por músculo por semana (directa = 1, indirecta = 0,5)
+REGLAS.limiteMantenimiento = 55;          // minutos
+REGLAS.limiteCorto = 60;                  // cuando hay poco tiempo por agenda o estrés
+REGLAS.vueltaDias = 10;                   // si pasaron más días sin entrenar, la primera sesión baja 10% el peso
+const MUSCULOS_SEMANA = ["pecho", "espalda", "hombros", "biceps", "triceps", "cuadriceps", "isquios", "gluteos", "gemelos"];

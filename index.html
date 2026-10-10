@@ -21,6 +21,11 @@
   <div class="d-titulo">Descanso</div>
   <div class="d-reloj" id="d-reloj">0:00</div>
   <div class="d-prox" id="d-prox"></div>
+  <div id="d-rir" hidden>
+    <p style="margin:0 0 6px"><b>¿Cuántas repeticiones más podías hacer?</b></p>
+    <div class="fila3"><button class="sec" data-accion="rir" data-v="0">Ninguna</button><button class="sec" data-accion="rir" data-v="1">1 o 2</button><button class="sec" data-accion="rir" data-v="3">3 o más</button></div>
+    <p class="chico suave" id="d-rir-ok"></p>
+  </div>
   <div class="fila2">
     <button class="sec" data-accion="descanso-mas">+15 s</button>
     <button data-accion="descanso-saltear">Saltear descanso</button>
@@ -43,5 +48,6 @@
 
 <script src="datos.js"></script>
 <script src="app.js"></script>
+<script src="entrenador.js"></script>
 </body>
 </html>

@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 2 · v2";
+const VERSION_APP = "Etapa 3 · v1";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -59,7 +59,7 @@ const mmss = (s) => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) 
 const hhmm = (ms) => { const m = Math.floor(ms / 60000); return m >= 60 ? Math.floor(m / 60) + " h " + (m % 60) + " min" : m + " min"; };
 const fecha = (ts) => new Date(ts).toLocaleDateString("es-AR", { day: "numeric", month: "short" });
 const fechaLarga = (ts) => new Date(ts).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
-const reglas = (ej) => REGLAS[EJERCICIOS[ej].tipo] || REGLAS.aislamiento;
+const reglas = (ej) => { const b = REGLAS[EJERCICIOS[ej].tipo] || REGLAS.aislamiento; return EJERCICIOS[ej].series ? { ...b, series: EJERCICIOS[ej].series } : b; };
 const gifUrl = (ej) => GIF_BASE + EJERCICIOS[ej].gif;
 
 function toast(texto) {
@@ -143,21 +143,26 @@ const PANTALLAS = {
     const activa = sesiones.find((s) => !s.fin);
     const terminadas = sesiones.filter((s) => s.fin).sort((a, b) => b.inicio - a.inicio);
     const ultima = terminadas[0];
-    const ultimaNormal = terminadas.find((x) => x.tipo !== "pendientes");
-    const sugerido = ultimaNormal ? (ultimaNormal.dia % 3) + 1 : 1;
-    const dia = E.diaElegido || sugerido;
+    const modo = await leerModo();
+    const opcionesDia = diasDelModo(modo);
+    const sugerido = diaSugerido(modo, terminadas);
+    const dia = E.diaElegido && DIAS[E.diaElegido] ? E.diaElegido : sugerido;
+    const limiteHoy = limiteDe(dia, modo);
     const pesoAct = pesos.sort((a, b) => b.fecha - a.fecha)[0];
     const sinRespaldo = terminadas.length > 0 && (!ultResp || Date.now() - ultResp > 7 * 86400000);
     const notif = await estadoNotificaciones();
-    const plan = activa ? null : await planDelDia(DIAS[dia].ejercicios, REGLAS.limiteMin);
+    const plan = activa ? null : await planDelDia(DIAS[dia].ejercicios, limiteHoy, dia);
+    const extras = activa ? "" : await tarjetasEntrenador(dia);
+    const semana = await tarjetaSemana();
+    const medidas = activa ? "" : await tarjetaMedidas();
     const pend = activa ? [] : await pendientesConEstado();
     const pendListos = pend.filter((p) => p.listo <= Date.now() && !DIAS[dia].ejercicios.includes(p.e));
     let planHtml = "";
     if (plan) {
-      if (plan.entra) planHtml = `<p class="ok"><b>Estimado ≈ ${durTxt(plan.completo)}</b> · entra en tu límite de ${durTxt(REGLAS.limiteMin * 60)}</p>`;
+      if (plan.entra) planHtml = `<p class="ok"><b>Estimado ≈ ${durTxt(plan.completo)}</b> · entra en tu límite de ${durTxt(limiteHoy * 60)}</p>`;
       else {
-        const cambios = Object.entries(plan.recortes).sort((a, b) => DIAS[dia].ejercicios.indexOf(a[0]) - DIAS[dia].ejercicios.indexOf(b[0])).map(([e, n]) => `${EJERCICIOS[e].nombre}: ${reglas(e).series - n} series en vez de ${reglas(e).series}`);
-        planHtml = `<p>Completo te llevaría <b class="mal">≈ ${durTxt(plan.completo)}</b>. Para entrar en ${durTxt(REGLAS.limiteMin * 60)}:</p>
+        const cambios = Object.entries(plan.recortes).filter(([e]) => !plan.pendientes.includes(e)).sort((a, b) => DIAS[dia].ejercicios.indexOf(a[0]) - DIAS[dia].ejercicios.indexOf(b[0])).map(([e, n]) => `${EJERCICIOS[e].nombre}: ${seriesDe(dia, e) - n} series en vez de ${seriesDe(dia, e)}`);
+        planHtml = `<p>Completo te llevaría <b class="mal">≈ ${durTxt(plan.completo)}</b>. Para entrar en ${durTxt(limiteHoy * 60)}:</p>
           <ul class="chico">${cambios.map((c) => `<li>${c}</li>`).join("")}${plan.pendientes.map((e) => `<li>${EJERCICIOS[e].nombre}: <b>queda pendiente para otro día</b></li>`).join("")}</ul>
           <p class="ok chico">Plan ajustado ≈ ${durTxt(plan.ajustado)}</p>`;
       }
@@ -175,11 +180,12 @@ const PANTALLAS = {
         <div class="tarjeta"><h2>Entrenamiento en curso</h2>
           <p>${tituloSesion(activa)} · ${nombreSesion(activa)}<br><span class="suave chico">Empezaste a las ${hora(activa.inicio)}</span></p>
           <button class="grande" data-accion="seguir">Seguir entrenando</button></div>` : `
-        <h1>Hoy toca Día ${dia}</h1>
+        ${extras}
+        <h1>Hoy toca ${textoDia(dia)}</h1>
         <p class="suave" style="margin-top:0">${DIAS[dia].nombre}${dia !== sugerido ? " (elegido a mano)" : ""}</p>
-        <div class="fila3 dias">${[1, 2, 3].map((d) => `<button class="sec ${d === dia ? "activo" : ""}" data-accion="elegir-dia" data-d="${d}">Día ${d}</button>`).join("")}</div>
+        ${opcionesDia.length > 1 ? `<div class="fila${opcionesDia.length} dias">${opcionesDia.map((d) => `<button class="sec ${d === dia ? "activo" : ""}" data-accion="elegir-dia" data-d="${d}">${textoDia(d)}</button>`).join("")}</div>` : ""}
         <div class="tarjeta" style="margin-top:12px">
-          ${DIAS[dia].ejercicios.map((e) => `<div class="chico">· ${EJERCICIOS[e].nombre} <span class="suave">${plan.objetivos[e] || 0}×${reglas(e).repsMin}-${reglas(e).repsMax}</span></div>`).join("")}
+          ${DIAS[dia].ejercicios.map((e) => `<div class="chico">· ${EJERCICIOS[e].nombre} <span class="suave">${plan.pendientes.includes(e) ? "otro día" : `${plan.objetivos[e] || 0}×${reglas(e).repsMin}-${reglas(e).repsMax}`}${plan.prioridad.includes(EJERCICIOS[e].principal) ? " · prioridad" : ""}</span></div>`).join("")}
         </div>
         <div class="tarjeta">${planHtml}</div>
         ${plan.entra ? `<button class="grande" data-accion="empezar" data-d="${dia}" data-modo="completo">Empezar</button>` : `
@@ -191,12 +197,14 @@ const PANTALLAS = {
           <p class="chico suave">Se ofrecen cuando sus músculos ya descansaron (48 h el principal, 24 h los secundarios). Ideal para tu día libre.</p>
           ${pendListos.length ? `<button class="sec" data-accion="empezar-pendientes">Entrenar solo pendientes listos (${pendListos.length})</button>` : ""}
         </div>` : ""}`}
-      <div class="fila2" style="margin-top:10px">
+      ${semana}${medidas}
+      <div class="fila3" style="margin-top:10px">
         <button class="sec" data-accion="ir" data-p="historial">Historial</button>
-        <button class="sec" data-accion="ir" data-p="peso">Peso corporal</button>
+        <button class="sec" data-accion="ir" data-p="peso">Peso</button>
+        <button class="sec" data-accion="ir" data-p="medidas">Medidas</button>
       </div>
       <div class="tarjeta" style="margin-top:12px">
-        <p class="chico suave">${ultima ? `Último entrenamiento: ${fecha(ultima.inicio)} · Día ${ultima.dia} · ${hhmm(ultima.fin - ultima.inicio)}` : "Todavía no registraste entrenamientos."}</p>
+        <p class="chico suave">${ultima ? `Último entrenamiento: ${fecha(ultima.inicio)} · ${tituloSesion(ultima)} · ${hhmm(ultima.fin - ultima.inicio)}` : "Todavía no registraste entrenamientos."}</p>
         <p class="chico suave">${pesoAct ? `Peso: ${kg(pesoAct.kg)} kg (${fecha(pesoAct.fecha)})` : ""}${perfil && perfil.nacimiento ? ` · ${edad(perfil.nacimiento)} años` : ""}</p>
       </div>`;
   },
@@ -231,7 +239,7 @@ const PANTALLAS = {
         const n = hechas(e), tot = objetivo(s, e), salt = s.saltados.includes(e), mov = (s.movidos || []).includes(e);
         return `<div class="item ${n >= tot || salt || mov ? "hecho" : ""}" data-accion="abrir-ej" data-e="${e}">
           <img src="${gifUrl(e)}" alt="" loading="lazy">
-          <div class="txt"><b>${EJERCICIOS[e].nombre}</b><span class="chico suave">${mov ? "pendiente para otro día" : `${tot} series · ${reglas(e).repsMin}-${reglas(e).repsMax} reps`}${tot < reglas(e).series && !mov ? " (ajustado)" : ""}</span></div>
+          <div class="txt"><b>${EJERCICIOS[e].nombre}</b><span class="chico suave">${mov ? "pendiente para otro día" : `${tot} series · ${reglas(e).repsMin}-${reglas(e).repsMax} reps`}${tot < seriesDe(s.dia, e) && !mov ? (s.liviano ? " (liviano)" : " (ajustado)") : ""}</span></div>
           <span class="prog">${mov ? "→ otro día" : salt ? "salteado" : n + "/" + tot}</span></div>`;
       }).join("")}
       <button class="${series.length ? "" : "sec"}" data-accion="terminar" id="b-terminar">Terminar entrenamiento</button>
@@ -248,6 +256,10 @@ const PANTALLAS = {
     const u = await unidadDe(e);
     const paso = await pasoDe(e, u || "kg");
     const n = hoy.length + 1;
+    // Indicación del entrenador (si ya hay historial)
+    const pres = u === null ? null : await prescribir(e, s);
+    E.pres = pres;
+    if (!E.valoresListos && pres) { E.peso = pres.peso; E.reps = pres.reps; E.valoresListos = true; }
     // Valores iniciales: lo de la última vez (misma serie), o la serie anterior de hoy
     if (!E.valoresListos) {
       const ref = hoy[hoy.length - 1] || ant.series[n - 1] || ant.series[ant.series.length - 1];
@@ -281,10 +293,19 @@ const PANTALLAS = {
         <p class="chico suave">Se pregunta una sola vez por máquina. Si los números de la pila van 10, 30, 50… o es de marca Cybex, Life Fitness o Hammer Strength, casi siempre son libras.</p>
         <div class="fila2"><button data-accion="set-unidad" data-u="kg">Kilos</button><button data-accion="set-unidad" data-u="lb">Libras</button></div>
       </div>` : `
+      ${pres ? `<div class="tarjeta receta">
+        <p class="chico suave" style="margin:0">Tu entrenador indica para hoy</p>
+        <div class="receta-num">${fmtPeso(pres.peso, pres.unidad, e)} × ${pres.reps}</div>
+        <p class="chico">${pres.razon}</p>${pres.nota ? `<p class="chico mal">${pres.nota}</p>` : ""}
+      </div>` : ""}
       <div class="tarjeta">
         <h2>${n <= r.series ? `Serie ${n} de ${r.series}` : `Serie extra (${n})`}</h2>
         ${recordatorio(e, u)}
-        ${primeraVez ? `<p class="chico ok">Primera vez: tocá el número para escribir el peso, o usá + y −.</p>` : ""}
+        ${primeraVez ? `<p class="chico ok">Primera vez: elegí un peso con el que llegues a unas ${r.repsMin}-${r.repsMax} repeticiones. Tocá el número para escribirlo, o usá + y −. Desde la próxima, el peso lo indica la app.</p>` : ""}
+        ${pres && !E.manual ? `
+        <button class="grande" data-accion="cumpli">✓ Cumplí: ${fmtPeso(pres.peso, pres.unidad, e)} × ${pres.reps}</button>
+        <button class="sec" data-accion="manual">Hice otra cosa (corregir)</button>` : `
+        ${pres ? `<p class="chico suave">Cargá lo que hiciste de verdad. <span class="lapiz" data-accion="volver-indicado">Volver a lo indicado</span></p>` : ""}
         <div class="ajuste">
           <button class="sec" data-accion="peso" data-d="-1">−</button>
           <div class="valor"><b id="v-peso" data-accion="escribir-peso">${kg(E.peso)}</b><span>${etiquetaPeso(e, u)}</span><br>
@@ -297,7 +318,7 @@ const PANTALLAS = {
           <div class="valor"><b id="v-reps">${E.reps}</b><span>repeticiones</span></div>
           <button class="sec" data-accion="reps" data-d="1">+</button>
         </div>
-        <button class="grande" data-accion="confirmar-serie">✓ Confirmar serie</button>
+        <button class="grande" data-accion="confirmar-serie">✓ Confirmar serie</button>`}
       </div>`}
       <div class="fila2">
         <button class="sec" data-accion="saltear-ej">Saltear ejercicio</button>
@@ -352,6 +373,8 @@ const PANTALLAS = {
       <div class="tarjeta">
         <p>Duración: <b class="${s.fin - s.inicio > (s.limite || REGLAS.limiteMin) * 60000 ? "mal" : "ok"}">${hhmm(s.fin - s.inicio)}</b> <span class="suave chico">(límite ${durTxt((s.limite || REGLAS.limiteMin) * 60)}${s.limite > (s.limiteOriginal || REGLAS.limiteMin) ? `, sumaste ${s.limite - s.limiteOriginal} min` : ""})</span></p>
         ${(s.quedaronPendientes || []).length ? `<p>Quedan pendientes para otro día: <b>${s.quedaronPendientes.map((e) => EJERCICIOS[e].nombre).join(", ")}</b></p>` : ""}
+        ${(s.quedaronPendientes || []).length && s.fin - s.inicio < ((s.limite || REGLAS.limiteMin) - 10) * 60000 ? `<div class="tarjeta aviso" style="margin-top:10px"><b>Terminaste antes de lo previsto</b><p class="chico">¿Por qué? Me ayuda a adaptar lo que viene.</p>${botonesMotivo("corte")}
+          <button class="sec chico" data-accion="motivo" data-m="ok" data-o="corte" style="margin-top:8px">Fue algo puntual</button></div>` : ""}
         ${s.calInicio && s.calFin ? `<p>Entrada en calor: <b>${mmss((s.calFin - s.calInicio) / 1000)}</b> <span class="suave chico">(previsto ≈ ${Math.round(CALENTAMIENTO[s.dia].reduce((t, x) => t + x.seg, 0) / 60)} min)</span></p>` : ""}
         <p>Ejercicios: <b>${ejs}</b> · Series: <b>${series.length}</b></p>
         <p>Volumen total: <b>${kg(Math.round(vol))} kg</b> <span class="suave chico">(peso real × repeticiones, en kg)</span></p>
@@ -386,6 +409,7 @@ const PANTALLAS = {
     app.innerHTML = `
       <button class="volver" data-accion="hist-volver">← Historial</button>
       <h2>${EJERCICIOS[e].nombre}</h2>
+      <div class="tarjeta"><b>Fuerza estimada</b><p class="chico suave" style="margin:2px 0">Combina peso y repeticiones (fórmula de Epley): si sube, estás mejorando.</p>${grafico(lista.map((x) => ({ x: x.fecha, y: Math.round(Math.max(...x.series.map(e1rm)) * 10) / 10 })), "")}</div>
       <div class="tarjeta"><b>Peso máximo por sesión</b>${grafico(lista.map((x) => ({ x: x.fecha, y: x.max })), "kg")}</div>
       <div class="tarjeta">${lista.length ? lista.slice().reverse().map((x) => `
         <div class="serie"><span>${fecha(x.fecha)}</span><span>${x.series.map((s) => `<span class="chip" data-accion="editar-serie" data-id="${s.id}">${fmtCorta(s)}</span>`).join("")}</span></div>`).join("") + `<p class="chico suave">Tocá una serie para corregirla.</p>`
@@ -530,15 +554,26 @@ const ACCIONES = {
     mostrar(anterior.nacimiento ? "ajustes" : "inicio");
   },
 
-  "elegir-dia": (d) => { E.diaElegido = +d.d; PANTALLAS.inicio(); },
+  "elegir-dia": (d) => { E.diaElegido = isNaN(+d.d) ? d.d : +d.d; mostrar("inicio"); },
 
   async empezar(d) {
-    const dia = +d.d;
-    const plan = await planDelDia(DIAS[dia].ejercicios, REGLAS.limiteMin);
+    if (!d.chk) { E.empezarArgs = { d: d.d, modo: d.modo }; E.chk = {}; return hojaChequeo(); }
+    const dia = isNaN(+d.d) ? d.d : +d.d;
+    const modo = await leerModo();
+    const limite = limiteDe(dia, modo);
+    const plan = await planDelDia(DIAS[dia].ejercicios, limite, dia);
     const ajustado = d.modo === "ajustado";
+    const liviano = d.liviano === "1" || (modo && modo.tipo === "liviano") || (await ajuste("livianoProxima"));
+    if (await ajuste("livianoProxima")) await guardarAjuste("livianoProxima", false);
+    const objetivos = ajustado ? { ...plan.objetivos } : Object.fromEntries(DIAS[dia].ejercicios.map((e) => [e, seriesDe(dia, e)]));
+    if (liviano) for (const e in objetivos) if (objetivos[e] > 0) objetivos[e] = Math.max(2, objetivos[e] - 1);
+    // ¿vuelve después de muchos días sin entrenar?
+    const ultimaFin = Math.max(0, ...(await DB.todos("sesiones")).filter((x) => x.fin).map((x) => x.fin));
+    const diasSin = ultimaFin ? Math.floor((Date.now() - ultimaFin) / 86400000) : 0;
     const s = { id: nuevoId(), dia, inicio: Date.now(), fin: null, ejercicios: DIAS[dia].ejercicios.slice(), saltados: [], bloques: {},
-      opcion: ajustado ? "ajustado" : "completo", limite: REGLAS.limiteMin, limiteOriginal: REGLAS.limiteMin,
-      objetivos: ajustado ? plan.objetivos : null, movidos: ajustado ? plan.pendientes.slice() : [] };
+      opcion: ajustado ? "ajustado" : "completo", limite, limiteOriginal: limite,
+      objetivos, movidos: ajustado ? plan.pendientes.slice() : [],
+      checkin: E.chk && Object.keys(E.chk).length ? { ...E.chk } : null, liviano: !!liviano, vuelta: diasSin > REGLAS.vueltaDias ? diasSin : 0 };
     await DB.put("sesiones", s);
     // los pendientes de este mismo día se hacen hoy: ya no hacen falta
     await guardarPendientes((await leerPendientes()).filter((p) => !s.ejercicios.includes(p.e)));
@@ -614,7 +649,7 @@ const ACCIONES = {
     const x = CALENTAMIENTO[s.dia][d.i];
     empezarDescanso(x.seg, "Terminó: " + EJERCICIOS[x.e].nombre, { titulo: EJERCICIOS[x.e].nombre, aviso: "¡Listo!", alTerminar: () => ACCIONES["cal-hecho"]({ i: d.i }) });
   },
-  "abrir-ej": (d) => mostrar("ejercicio", { ejercicio: d.e, valoresListos: false }),
+  "abrir-ej": (d) => mostrar("ejercicio", { ejercicio: d.e, valoresListos: false, manual: false }),
 
   peso: async (d) => {
     const paso = await pasoDe(E.ejercicio, (await unidadDe(E.ejercicio)) || "kg");
@@ -656,7 +691,8 @@ const ACCIONES = {
     const hoy = (await DB.porIndice("series", "sesion", s.id)).filter((x) => x.ejercicio === e);
     const n = hoy.length + 1;
     const unidad = (await unidadDe(e)) || "kg";
-    await DB.put("series", { id: nuevoId(), sesion: s.id, ejercicio: e, n, peso: E.peso, unidad, reps: E.reps, hora: Date.now(), descanso: r.descanso });
+    const idSerie = nuevoId(); E.ultimaSerieId = idSerie;
+    await DB.put("series", { id: idSerie, sesion: s.id, ejercicio: e, n, peso: E.peso, unidad, reps: E.reps, hora: Date.now(), descanso: r.descanso, objetivo: E.pres ? { peso: E.pres.peso, reps: E.pres.reps } : null });
     if (s.calInicio && !s.calFin) s.calFin = Date.now();
     s.saltados = s.saltados.filter((x) => x !== e);
     s.movidos = (s.movidos || []).filter((x) => x !== e);
@@ -672,10 +708,10 @@ const ACCIONES = {
       siguienteEj = s.ejercicios.slice(s.ejercicios.indexOf(e) + 1).find((x) => !s.saltados.includes(x) && !s.movidos.includes(x));
       prox = siguienteEj ? `Ahora: ${EJERCICIOS[siguienteEj].nombre}` : "¡Último ejercicio terminado!";
     }
-    if (siguienteEj) { E.ejercicio = siguienteEj; E.valoresListos = false; }
+    if (siguienteEj) { E.ejercicio = siguienteEj; E.valoresListos = false; E.manual = false; }
     else E.valoresListos = true; // mantiene peso y reps para la próxima serie
     await mostrar(n >= r.series && !siguienteEj ? "sesion" : "ejercicio");
-    if (n < r.series || siguienteEj) empezarDescanso(r.descanso, prox, ultima ? { aviso: "¡Última serie de este ejercicio!", ultima: true } : {});
+    if (n < r.series || siguienteEj) empezarDescanso(r.descanso, prox, { ...(ultima ? { aviso: "¡Última serie de este ejercicio!", ultima: true } : {}), rir: true });
     else toast("¡Terminaste todos los ejercicios! Tocá «Terminar entrenamiento».");
     E.proyCache = 0; revisarTiempo("serie");
   },
@@ -700,7 +736,7 @@ const ACCIONES = {
     s.fin = Date.now();
     const series = await DB.porIndice("series", "sesion", s.id);
     const hechos = new Set(series.map((x) => x.ejercicio));
-    s.quedaronPendientes = s.ejercicios.filter((e) => !hechos.has(e));
+    s.quedaronPendientes = DIAS[s.dia].especial ? [] : s.ejercicios.filter((e) => !hechos.has(e));
     await DB.put("sesiones", s);
     // los pendientes que se hicieron hoy se borran; los ejercicios que no se hicieron pasan a pendientes
     await guardarPendientes((await leerPendientes()).filter((p) => !hechos.has(p.e)));
@@ -894,6 +930,9 @@ function empezarDescanso(segundos, texto, op = {}) {
   D.esCal = !!op.alTerminar;
   $(".d-titulo").textContent = D.titulo;
   $("#d-prox").classList.toggle("ultima", !!op.ultima);
+  $("#d-rir").hidden = !op.rir;
+  document.querySelectorAll("#d-rir button").forEach((b) => b.classList.add("sec"));
+  $("#d-rir-ok").textContent = "Me ayuda a elegir el peso de la próxima vez";
   $("#d-ver-ej").hidden = D.esCal;
   $("#d-ver-lista").textContent = D.esCal ? "Ver entrada en calor" : "Ver lista del día";
   $("#d-ver-lista").dataset.v = D.esCal ? "calentamiento" : "lista";
@@ -1025,7 +1064,7 @@ const objetivo = (s, e) => (s.objetivos && s.objetivos[e] != null ? s.objetivos[
 const hora = (ts) => { const d = new Date(ts); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
 const durTxt = (seg) => hhmm(seg * 1000);
 const nombreSesion = (s) => (s.tipo === "pendientes" ? "Pendientes de otros días" : DIAS[s.dia].nombre);
-const tituloSesion = (s) => (s.tipo === "pendientes" ? "Pendientes" : "Día " + s.dia);
+const tituloSesion = (s) => (s.tipo === "pendientes" ? "Pendientes" : textoDia(s.dia));
 
 // Ritmo real a partir del historial (si hay pocos datos, usa el ritmo inicial medido)
 async function ritmoReal() {
@@ -1064,20 +1103,21 @@ function ajustar(items, rit, disponible) {
   const it = items.map((x) => ({ ...x }));
   let t = estimar(it, rit);
   const recortes = {};
-  for (const tipo of ["aislamiento", "compuesto"]) {
+  for (const [tipo, conPrioridad] of [["aislamiento", false], ["compuesto", false], ["aislamiento", true], ["compuesto", true]]) {
     let hubo = true;
     while (t > disponible && hubo) {
       hubo = false;
       for (const x of it.slice().reverse()) {
         if (t <= disponible) break;
-        if (tipoDe(x.e) !== tipo || x.n <= x.min) continue;
+        if (tipoDe(x.e) !== tipo || x.n <= x.min || (!!x.prioridad && !conPrioridad)) continue;
         x.n--; recortes[x.e] = (recortes[x.e] || 0) + 1; t = estimar(it, rit); hubo = true;
       }
     }
   }
   const pendientes = [];
   while (t > disponible) {
-    const vivos = it.filter((x) => x.n > 0 && x.nuevo);
+    let vivos = it.filter((x) => x.n > 0 && x.nuevo && !x.prioridad);
+    if (vivos.length <= 1) vivos = it.filter((x) => x.n > 0 && x.nuevo);
     if (vivos.length <= 1) break;
     const x = vivos[vivos.length - 1]; pendientes.unshift(x.e); x.n = 0; t = estimar(it, rit);
   }
@@ -1085,12 +1125,14 @@ function ajustar(items, rit, disponible) {
 }
 
 // Plan para un día antes de empezar
-async function planDelDia(ejercicios, limiteMin) {
+async function planDelDia(ejercicios, limiteMin, dia) {
   const rit = await ritmoReal();
-  const base = ejercicios.map((e) => ({ e, n: reglas(e).series, min: REGLAS.minSeries[tipoDe(e)], nuevo: true }));
+  const prioridad = await rezagados();
+  const especial = dia != null && DIAS[dia] && DIAS[dia].especial;
+  const base = ejercicios.map((e) => ({ e, n: seriesDe(dia, e), min: REGLAS.minSeries[tipoDe(e)], nuevo: !especial, prioridad: prioridad.includes(EJERCICIOS[e].principal) }));
   const completo = rit.calentamiento + estimar(base, rit);
   const aj = ajustar(base, rit, limiteMin * 60 - rit.calentamiento);
-  return { rit, completo, ajustado: rit.calentamiento + aj.t, recortes: aj.recortes, pendientes: aj.pendientes,
+  return { rit, prioridad, completo, ajustado: rit.calentamiento + aj.t, recortes: aj.recortes, pendientes: aj.pendientes,
     objetivos: Object.fromEntries(aj.items.map((x) => [x.e, x.n])), entra: completo <= limiteMin * 60 };
 }
 
@@ -1122,6 +1164,10 @@ async function ultimoTrabajo(excluirSesion) {
     const ej = EJERCICIOS[x.ejercicio]; if (!ej) continue;
     prin[ej.principal] = Math.max(prin[ej.principal] || 0, x.hora);
     for (const m of [ej.principal, ...ej.secundarios]) total[m] = Math.max(total[m] || 0, x.hora);
+  }
+  for (const ev of (await ajuste("eventos")) || []) {
+    if (ev.tipo !== "deporte" || !ev.musculos) continue;
+    for (const m of ev.musculos) { prin[m] = Math.max(prin[m] || 0, ev.hora || ev.fecha); total[m] = Math.max(total[m] || 0, ev.hora || ev.fecha); }
   }
   return { prin, total };
 }
@@ -1235,12 +1281,14 @@ async function corregirMancuernasV7() {
 function aplicarLetra(px) { document.documentElement.style.setProperty("--letra", px + "px"); }
 
 (async function arrancar() {
+  if (document.readyState === "loading") await new Promise((r) => document.addEventListener("DOMContentLoaded", r));
   if ("serviceWorker" in navigator) {
     try { await navigator.serviceWorker.register("sw.js"); registro = await navigator.serviceWorker.ready; } catch (e) {}
   }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
   await DB.abrir();
   aplicarLetra((await ajuste("letra")) || 20);
+  await cargarPesoCorporal();
   await corregirMancuernasV7();
   const perfil = await ajuste("perfil");
   if (!perfil || !perfil.nacimiento) return mostrar("config");
