@@ -112,12 +112,14 @@ const MODOS = {
 function diasDelModo(modo) {
   if (modo && modo.tipo === "mantenimiento") return ["MA", "MB"];
   if (modo && modo.tipo === "viaje") return ["V"];
-  return [1, 2, 3];
+  return DIAS_RUTINA.slice();
 }
 function diaSugerido(modo, terminadas) {
   const opciones = diasDelModo(modo);
   const ult = terminadas.find((x) => x.tipo !== "pendientes" && opciones.includes(x.dia));
   if (!ult) return opciones[0];
+  // el último entrenamiento fue de la rutina anterior (3 días): sigue el día que respeta las 48 h
+  if (!DIAS[ult.dia].especial && ult.rutina !== RUTINA_VERSION) return SIGUIENTE_DESDE_RUTINA1[ult.dia] || opciones[0];
   return opciones[(opciones.indexOf(ult.dia) + 1) % opciones.length];
 }
 function limiteDe(dia, modo) {
@@ -180,7 +182,7 @@ async function avisoRecuperacion(dia) {
   const cansados = [...new Set(DIAS[dia].ejercicios.map((e) => EJERCICIOS[e].principal)
     .filter((m) => (ult.prin[m] || 0) + REGLAS.recuperacion.principalH * H > ahora))];
   if (!cansados.length) return "";
-  const mejor = [1, 2, 3].filter((d) => d !== dia).map((d) => ({ d, n: DIAS[d].ejercicios.filter((e) => (ult.prin[EJERCICIOS[e].principal] || 0) + 48 * H > ahora).length }))
+  const mejor = DIAS_RUTINA.filter((d) => d !== dia).map((d) => ({ d, n: DIAS[d].ejercicios.filter((e) => (ult.prin[EJERCICIOS[e].principal] || 0) + 48 * H > ahora).length }))
     .sort((a, b) => a.n - b.n)[0];
   return `<div class="tarjeta aviso"><b>Ojo: ${cansados.map((m) => NOMBRES_MUSCULOS[m]).join(", ")} todavía no ${cansados.length > 1 ? "descansaron" : "descansó"} 48 h</b>
     ${mejor && mejor.n === 0 ? `<p class="chico">Hoy te conviene el <b>Día ${mejor.d}</b> (${DIAS[mejor.d].nombre}).</p><button class="sec" data-accion="elegir-dia" data-d="${mejor.d}">Cambiar a Día ${mejor.d}</button>` : `<p class="chico">Si podés, hacé una sesión liviana.</p>`}</div>`;
@@ -205,16 +207,19 @@ async function tarjetasEntrenador(dia) {
           <button class="sec chico" data-accion="motivo" data-m="ok" data-o="${cambio.origen}" style="margin-top:8px">Todo bien, fue algo puntual</button></div>`;
   }
   html += await avisoRecuperacion(dia);
+  html += await tarjetaBalance();
   return html;
 }
 
 async function tarjetaSemana() {
   const D = 86400000, ahora = Date.now();
   if (!(await sesionesEntre(ahora - 14 * D, ahora)).length) return "";
-  const v = await volumenMuscular(ahora - 7 * D, ahora);
+  // Con la rutina de 4 días se muestra el mismo promedio semanal que usa el entrenador; si no hay datos suficientes, los últimos 7 días
+  const vp = await volumenPromedio();
+  const v = vp || (await volumenMuscular(ahora - 7 * D, ahora));
   const atras = await rezagados();
   const { min, max } = REGLAS.volumen;
-  return `<div class="tarjeta"><b>Series por músculo (últimos 7 días)</b>
+  return `<div class="tarjeta"><b>Series por músculo ${vp ? "por semana (promedio)" : "(últimos 7 días)"}</b>
     <p class="chico suave" style="margin-top:2px">Para ganar músculo: entre ${min} y ${max} por semana. Directas cuentan 1, indirectas ½.</p>
     ${MUSCULOS_SEMANA.map((m) => { const n = v[m], col = n < min ? "var(--rojo)" : n > max ? "var(--naranja)" : "var(--verde)";
       return `<div class="barra-m"><span>${NOMBRES_MUSCULOS[m]}</span><div class="barra-f"><i style="width:${Math.min(100, (n / max) * 100)}%;background:${col}"></i><em style="left:${(min / max) * 100}%"></em></div><b>${Math.round(n * 10) / 10}</b></div>`; }).join("")}
@@ -365,5 +370,194 @@ Object.assign(ACCIONES, {
     if (Object.keys(m).length <= 2) return toast("Cargá al menos una medida");
     const l = (await ajuste("medidas")) || []; l.push(m); await guardarAjuste("medidas", l);
     toast("Medidas guardadas"); PANTALLAS.medidas();
+  },
+});
+
+// =====================================================================
+// BALANCEADOR SEMANAL
+// Una vez por semana mira cuántas series hizo cada músculo y propone cambios chicos:
+// sacar 1 serie donde sobra, sumar 1 donde falta, o agregar un ejercicio si la rutina no tiene cómo.
+// Nunca cambia nada sin que Manuel toque "Aplicar". Siempre se puede volver a la rutina original.
+// =====================================================================
+const SERIES_EXTRA = 3; // series con las que entra un ejercicio agregado
+
+async function leerBalance() {
+  let b = await ajuste("balance");
+  if (!b || b.rutina !== RUTINA_VERSION) { b = { rutina: RUTINA_VERSION, deltas: {}, extras: {}, revisado: null, inicio: Date.now(), historial: [] }; await guardarAjuste("balance", b); }
+  return b;
+}
+const esExtra = (b, d, e) => (b.extras[d] || []).includes(e) && !RUTINA_BASE[d].ejercicios.includes(e);
+function seriesBase(b, d, e) {
+  if (esExtra(b, d, e)) return SERIES_EXTRA;
+  return (RUTINA_BASE[d].series && RUTINA_BASE[d].series[e]) || reglas(e).series;
+}
+// Arma los días de la rutina = rutina base + los cambios aceptados
+function armarDias(b) {
+  const dias = {};
+  for (const d of DIAS_RUTINA) {
+    const base = RUTINA_BASE[d];
+    const ejercicios = base.ejercicios.concat((b.extras[d] || []).filter((e) => !base.ejercicios.includes(e)));
+    const series = {};
+    for (const e of ejercicios) series[e] = Math.max(1, seriesBase(b, d, e) + (b.deltas[d + "|" + e] || 0));
+    dias[d] = { nombre: base.nombre, ejercicios, series };
+  }
+  return dias;
+}
+async function aplicarBalance() {
+  const dias = armarDias(await leerBalance());
+  for (const d of DIAS_RUTINA) DIAS[d] = dias[d];
+}
+
+// Series por semana "promedio" de la rutina: como son 4 días y entrenás ~6 veces, en una semana
+// algunos días se repiten y otros no. Para no sacar conclusiones por eso, se toma el promedio de cada día
+// (últimas 2 semanas) y se multiplica por las veces que te toca cada día por semana.
+async function volumenSemanalRutina(sesiones, semanas) {
+  if (!DIAS_RUTINA.every((d) => sesiones.some((s) => s.dia === d))) return null; // falta algún día: no se compara
+  const porSesion = {};
+  for (const x of await DB.todos("series")) {
+    const ej = EJERCICIOS[x.ejercicio]; if (!ej || ej.tipo === "calentamiento") continue;
+    const v = (porSesion[x.sesion] = porSesion[x.sesion] || {});
+    v[ej.principal] = (v[ej.principal] || 0) + 1;
+    ej.secundarios.forEach((m) => { v[m] = (v[m] || 0) + 0.5; });
+  }
+  const vecesPorSemana = sesiones.length / semanas / DIAS_RUTINA.length;
+  const v = Object.fromEntries(MUSCULOS_SEMANA.map((m) => [m, 0]));
+  for (const d of DIAS_RUTINA) {
+    const delDia = sesiones.filter((s) => s.dia === d);
+    for (const m of MUSCULOS_SEMANA) v[m] += (delDia.reduce((t, s) => t + ((porSesion[s.id] || {})[m] || 0), 0) / delDia.length) * vecesPorSemana;
+  }
+  return v;
+}
+
+async function volumenPromedio() {
+  const D = 86400000, ahora = Date.now(), b = await leerBalance();
+  const ventana = Math.max(7 * D, Math.min(14 * D, ahora - b.inicio)); // desde que empezó la rutina, hasta 2 semanas
+  const ses = (await sesionesEntre(ahora - ventana, ahora)).filter((s) => s.rutina === RUTINA_VERSION && s.tipo !== "pendientes" && !DIAS[s.dia].especial);
+  return volumenSemanalRutina(ses, ventana / (7 * D));
+}
+
+// Calcula la propuesta de la semana (o null si no corresponde)
+async function proponerBalance() {
+  const B = REGLAS.balance, D = 86400000, ahora = Date.now();
+  if (await leerModo()) return null;
+  const b = await leerBalance();
+  if (ahora - (b.revisado || b.inicio) < B.cadaDias * D) return null;
+  const deRutina = (s) => s.rutina === RUTINA_VERSION && s.tipo !== "pendientes" && !DIAS[s.dia].especial;
+  const ses = (await sesionesEntre(ahora - 7 * D, ahora)).filter(deRutina);
+  if (ses.length < B.minSesiones) return null;
+  // semana fuera de lo normal (salud, viaje, estrés…): no se sacan conclusiones
+  const raros = ["salud", "viaje", "deporte", "estres", "cansancio", "tiempo"];
+  if ((await leerEventos()).some((ev) => ahora - ev.fecha < 7 * D && raros.includes(ev.tipo))) return null;
+  const v = await volumenPromedio();
+  if (!v) return null;
+  const rit = await ritmoReal();
+  const nuevo = { deltas: { ...b.deltas }, extras: JSON.parse(JSON.stringify(b.extras)) };
+  const dur = (d) => { const dd = armarDias({ ...b, ...nuevo })[d]; return rit.calentamiento + estimar(dd.ejercicios.map((e) => ({ e, n: dd.series[e] })), rit); };
+  const costoSerie = (e) => reglas(e).descanso + rit[tipoDe(e)];
+  const limite = REGLAS.limiteMin * 60;
+  const actual = (d, e) => armarDias({ ...b, ...nuevo })[d].series[e];
+  const cambios = [];
+  const { min } = REGLAS.volumen;
+
+  // 1) Músculos que quedan cortos: +1 serie, o un ejercicio nuevo
+  for (const m of MUSCULOS_SEMANA.filter((m) => v[m] < min).sort((a, b2) => v[a] - v[b2])) {
+    if (cambios.length >= B.maxCambios) break;
+    const cand = [];
+    for (const d of DIAS_RUTINA) for (const e of armarDias({ ...b, ...nuevo })[d].ejercicios) {
+      if (EJERCICIOS[e].principal !== m) continue;
+      const tope = Math.min(seriesBase({ ...b, ...nuevo }, d, e) + B.maxSuma, B.topeSeries);
+      if (actual(d, e) < tope && dur(d) + costoSerie(e) <= limite) cand.push({ d, e, t: dur(d) });
+    }
+    if (cand.length) {
+      const { d, e } = cand.sort((x, y) => x.t - y.t)[0];
+      const de = actual(d, e);
+      nuevo.deltas[d + "|" + e] = (nuevo.deltas[d + "|" + e] || 0) + 1;
+      cambios.push({ tipo: "suma", m, d, e, de, a: de + 1, v: v[m] });
+      continue;
+    }
+    // la rutina no tiene cómo sumarle: agregar el complemento en un día que respete las 48 h y tenga tiempo
+    const c = COMPLEMENTOS[m];
+    const yaEsta = DIAS_RUTINA.some((d) => armarDias({ ...b, ...nuevo })[d].ejercicios.includes(c));
+    if (!c || yaEsta) continue;
+    const n = DIAS_RUTINA.length;
+    const validos = DIAS_RUTINA.filter((d, i) => {
+      const vecinos = [DIAS_RUTINA[(i + n - 1) % n], DIAS_RUTINA[(i + 1) % n]];
+      const choca = vecinos.some((x) => armarDias({ ...b, ...nuevo })[x].ejercicios.some((e) => EJERCICIOS[e].principal === m));
+      return !choca && dur(d) + SERIES_EXTRA * costoSerie(c) + rit.cambio <= limite;
+    }).sort((x, y) => dur(x) - dur(y));
+    if (!validos.length) continue;
+    const d = validos[0];
+    nuevo.extras[d] = (nuevo.extras[d] || []).concat(c);
+    cambios.push({ tipo: "agrega", m, d, e: c, a: SERIES_EXTRA, v: v[m] });
+  }
+  // 2) Músculos que se pasan mucho: −1 serie en un ejercicio de aislamiento
+  for (const m of MUSCULOS_SEMANA.filter((m) => v[m] > B.excesoSobre).sort((a, b2) => v[b2] - v[a])) {
+    if (cambios.length >= B.maxCambios) break;
+    const cand = [];
+    for (const d of DIAS_RUTINA) for (const e of armarDias({ ...b, ...nuevo })[d].ejercicios) {
+      if (EJERCICIOS[e].principal !== m || EJERCICIOS[e].tipo !== "aislamiento") continue;
+      const piso = Math.max(REGLAS.minSeries.aislamiento, seriesBase({ ...b, ...nuevo }, d, e) - B.maxResta);
+      if (actual(d, e) > piso) cand.push({ d, e, n: actual(d, e) });
+    }
+    if (!cand.length) continue;
+    const { d, e, n: de } = cand.sort((x, y) => y.n - x.n)[0];
+    nuevo.deltas[d + "|" + e] = (nuevo.deltas[d + "|" + e] || 0) - 1;
+    cambios.push({ tipo: "resta", m, d, e, de, a: de - 1, v: v[m] });
+  }
+  return { cambios, nuevo, sesiones: ses.length };
+}
+
+const r1 = (x) => Math.round(x * 10) / 10;
+function textoCambio(c) {
+  const mus = `<b>${NOMBRES_MUSCULOS[c.m]}</b>: ${r1(c.v)} series`;
+  if (c.tipo === "suma") return `${mus} (te faltan) → <b>${EJERCICIOS[c.e].nombre}</b>: ${c.a} series en vez de ${c.de} (Día ${c.d})`;
+  if (c.tipo === "agrega") return `${mus} (te faltan) → se agrega <b>${EJERCICIOS[c.e].nombre}</b>, ${c.a} series, al Día ${c.d}`;
+  return `${mus} (te pasás) → <b>${EJERCICIOS[c.e].nombre}</b>: ${c.a} series en vez de ${c.de} (Día ${c.d})`;
+}
+
+async function tarjetaBalance() {
+  const p = await proponerBalance();
+  if (!p) return "";
+  if (!p.cambios.length) { const b = await leerBalance(); b.revisado = Date.now(); await guardarAjuste("balance", b); return ""; }
+  E.balanceProp = p;
+  return `<div class="tarjeta aviso"><b>Revisión semanal del entrenador</b>
+    <p class="chico suave" style="margin-top:2px">Miré tus entrenamientos recientes y calculé tus series promedio por semana. Meta: entre ${REGLAS.volumen.min} y ${REGLAS.volumen.max} por músculo. Te propongo:</p>
+    <ul class="chico">${p.cambios.map((c) => `<li>${textoCambio(c)}</li>`).join("")}</ul>
+    <p class="chico suave">Siempre dentro de tu límite de ${durTxt(REGLAS.limiteMin * 60)} y respetando las 48 h. Lo podés deshacer desde Ajustes.</p>
+    <div class="fila2"><button data-accion="balance-si">Aplicar</button><button class="sec" data-accion="balance-no">Ahora no</button></div></div>`;
+}
+
+// Lista de cambios vigentes respecto de la rutina original (para Ajustes)
+async function tarjetaCambiosRutina() {
+  const b = await leerBalance();
+  const items = [];
+  for (const d of DIAS_RUTINA) for (const e of DIAS[d].ejercicios) {
+    if (esExtra(b, d, e)) items.push(`Día ${d}: se agregó <b>${EJERCICIOS[e].nombre}</b> (${DIAS[d].series[e]} series)`);
+    else if (b.deltas[d + "|" + e]) items.push(`Día ${d}: <b>${EJERCICIOS[e].nombre}</b> ${DIAS[d].series[e]} series en vez de ${seriesBase(b, d, e)}`);
+  }
+  return `<div class="tarjeta"><b>Cambios del entrenador a tu rutina</b>
+    ${items.length ? `<ul class="chico">${items.map((x) => `<li>${x}</li>`).join("")}</ul>
+      <button class="sec" data-accion="balance-reset" data-confirmar="1">Volver a la rutina original</button>`
+    : `<p class="chico suave">Ninguno: estás con la rutina tal como la armamos. Una vez por semana reviso tus series por músculo y, si hace falta, te propongo ajustes.</p>`}
+  </div>`;
+}
+
+Object.assign(ACCIONES, {
+  async "balance-si"() {
+    const p = E.balanceProp; if (!p) return mostrar("inicio");
+    const b = await leerBalance();
+    b.deltas = p.nuevo.deltas; b.extras = p.nuevo.extras; b.revisado = Date.now();
+    b.historial = (b.historial || []).concat({ fecha: Date.now(), cambios: p.cambios }).slice(-30);
+    await guardarAjuste("balance", b); await aplicarBalance();
+    E.balanceProp = null; toast("Listo: rutina ajustada"); return mostrar("inicio");
+  },
+  async "balance-no"() {
+    const b = await leerBalance(); b.revisado = Date.now(); await guardarAjuste("balance", b);
+    E.balanceProp = null; toast("Ok, lo vuelvo a revisar la semana que viene"); return mostrar("inicio");
+  },
+  async "balance-reset"() {
+    const b = await leerBalance(); b.deltas = {}; b.extras = {}; b.revisado = Date.now();
+    await guardarAjuste("balance", b); await aplicarBalance();
+    toast("Volviste a la rutina original"); return mostrar("ajustes");
   },
 });

@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 3 · v1";
+const VERSION_APP = "Etapa 3 · v3";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -160,6 +160,8 @@ const PANTALLAS = {
     let planHtml = "";
     if (plan) {
       if (plan.entra) planHtml = `<p class="ok"><b>Estimado ≈ ${durTxt(plan.completo)}</b> · entra en tu límite de ${durTxt(limiteHoy * 60)}</p>`;
+      else if (plan.tolerable) planHtml = `<p><b>Estimado ≈ ${durTxt(plan.completo)}</b> · te pasarías unos ${Math.max(1, Math.round(plan.completo / 60 - limiteHoy))} min de tu límite de ${durTxt(limiteHoy * 60)}.</p>
+          <p class="chico suave">Está dentro del margen de ${REGLAS.toleranciaMin} min, así que no vale la pena recortar: hacés todo.</p>`;
       else {
         const cambios = Object.entries(plan.recortes).filter(([e]) => !plan.pendientes.includes(e)).sort((a, b) => DIAS[dia].ejercicios.indexOf(a[0]) - DIAS[dia].ejercicios.indexOf(b[0])).map(([e, n]) => `${EJERCICIOS[e].nombre}: ${seriesDe(dia, e) - n} series en vez de ${seriesDe(dia, e)}`);
         planHtml = `<p>Completo te llevaría <b class="mal">≈ ${durTxt(plan.completo)}</b>. Para entrar en ${durTxt(limiteHoy * 60)}:</p>
@@ -185,10 +187,10 @@ const PANTALLAS = {
         <p class="suave" style="margin-top:0">${DIAS[dia].nombre}${dia !== sugerido ? " (elegido a mano)" : ""}</p>
         ${opcionesDia.length > 1 ? `<div class="fila${opcionesDia.length} dias">${opcionesDia.map((d) => `<button class="sec ${d === dia ? "activo" : ""}" data-accion="elegir-dia" data-d="${d}">${textoDia(d)}</button>`).join("")}</div>` : ""}
         <div class="tarjeta" style="margin-top:12px">
-          ${DIAS[dia].ejercicios.map((e) => `<div class="chico">· ${EJERCICIOS[e].nombre} <span class="suave">${plan.pendientes.includes(e) ? "otro día" : `${plan.objetivos[e] || 0}×${reglas(e).repsMin}-${reglas(e).repsMax}`}${plan.prioridad.includes(EJERCICIOS[e].principal) ? " · prioridad" : ""}</span></div>`).join("")}
+          ${DIAS[dia].ejercicios.map((e) => `<div class="chico">· ${EJERCICIOS[e].nombre} <span class="suave">${!plan.tolerable && plan.pendientes.includes(e) ? "otro día" : `${plan.tolerable ? seriesDe(dia, e) : plan.objetivos[e] || 0}×${reglas(e).repsMin}-${reglas(e).repsMax}`}${plan.prioridad.includes(EJERCICIOS[e].principal) ? " · prioridad" : ""}</span></div>`).join("")}
         </div>
         <div class="tarjeta">${planHtml}</div>
-        ${plan.entra ? `<button class="grande" data-accion="empezar" data-d="${dia}" data-modo="completo">Empezar</button>` : `
+        ${plan.tolerable ? `<button class="grande" data-accion="empezar" data-d="${dia}" data-modo="completo">Empezar</button>` : `
           <button class="grande" data-accion="empezar" data-d="${dia}" data-modo="ajustado">Empezar (plan ajustado)</button>
           <button class="sec" data-accion="empezar" data-d="${dia}" data-modo="completo">Hacer todo (≈ ${durTxt(plan.completo)})</button>`}
         ${pend.length ? `<div class="tarjeta" style="margin-top:12px"><b>Pendientes de otros días</b>
@@ -387,14 +389,18 @@ const PANTALLAS = {
     if (E.histEj) return PANTALLAS.historialEj();
     const series = await DB.todos("series");
     const cuenta = (e) => new Set(series.filter((x) => x.ejercicio === e).map((x) => x.sesion)).size;
-    app.innerHTML = `
-      <button class="volver" data-accion="ir" data-p="inicio">← Inicio</button>
-      <h1>Historial</h1>
-      ${[1, 2, 3].map((d) => `<h3>Día ${d} · ${DIAS[d].nombre}</h3>` + DIAS[d].ejercicios.map((e) => `
+    const enRutina = new Set(DIAS_RUTINA.flatMap((d) => DIAS[d].ejercicios));
+    const otros = [...new Set(series.map((x) => x.ejercicio))].filter((e) => EJERCICIOS[e] && EJERCICIOS[e].tipo !== "calentamiento" && !enRutina.has(e));
+    const itemHist = (e) => `
         <div class="item" data-accion="hist-ej" data-e="${e}">
           <img src="${gifUrl(e)}" alt="" loading="lazy">
           <div class="txt"><b>${EJERCICIOS[e].nombre}</b><span class="chico suave">${cuenta(e)} sesiones registradas</span></div>
-          <span class="suave">›</span></div>`).join("")).join("")}`;
+          <span class="suave">›</span></div>`;
+    app.innerHTML = `
+      <button class="volver" data-accion="ir" data-p="inicio">← Inicio</button>
+      <h1>Historial</h1>
+      ${DIAS_RUTINA.map((d) => `<h3>Día ${d} · ${DIAS[d].nombre}</h3>` + DIAS[d].ejercicios.map(itemHist).join("")).join("")}
+      ${otros.length ? `<h3>Otros ejercicios (rutina anterior)</h3>` + otros.map(itemHist).join("") : ""}`;
   },
   async historialEj() {
     const e = E.histEj;
@@ -478,6 +484,7 @@ const PANTALLAS = {
         <p class="chico suave">${perfil.nacimiento ? edad(perfil.nacimiento) + " años · " : ""}${perfil.altura ? kg(perfil.altura) + " m" : ""}</p>
         <button class="sec" data-accion="ir" data-p="config">Editar mis datos</button>
       </div>
+      ${await tarjetaCambiosRutina()}
       <div class="tarjeta"><button class="sec" data-accion="ir" data-p="respaldo">Respaldo de datos</button></div>
       <div class="tarjeta"><b>Borrar historial de entrenamientos</b>
         <p class="chico suave">Borra todos los entrenamientos y series (por ejemplo, las pruebas). Tus datos y tu peso corporal se mantienen.</p>
@@ -563,6 +570,8 @@ const ACCIONES = {
     const limite = limiteDe(dia, modo);
     const plan = await planDelDia(DIAS[dia].ejercicios, limite, dia);
     const ajustado = d.modo === "ajustado";
+    // dentro del margen de tolerancia: se hace todo y el límite de hoy se estira esos minutos (sin avisos de apuro)
+    const limiteSes = !ajustado && !plan.entra && plan.tolerable ? limite + REGLAS.toleranciaMin : limite;
     const liviano = d.liviano === "1" || (modo && modo.tipo === "liviano") || (await ajuste("livianoProxima"));
     if (await ajuste("livianoProxima")) await guardarAjuste("livianoProxima", false);
     const objetivos = ajustado ? { ...plan.objetivos } : Object.fromEntries(DIAS[dia].ejercicios.map((e) => [e, seriesDe(dia, e)]));
@@ -571,7 +580,8 @@ const ACCIONES = {
     const ultimaFin = Math.max(0, ...(await DB.todos("sesiones")).filter((x) => x.fin).map((x) => x.fin));
     const diasSin = ultimaFin ? Math.floor((Date.now() - ultimaFin) / 86400000) : 0;
     const s = { id: nuevoId(), dia, inicio: Date.now(), fin: null, ejercicios: DIAS[dia].ejercicios.slice(), saltados: [], bloques: {},
-      opcion: ajustado ? "ajustado" : "completo", limite, limiteOriginal: limite,
+      rutina: DIAS[dia].especial ? null : RUTINA_VERSION, nombre: DIAS[dia].nombre,
+      opcion: ajustado ? "ajustado" : "completo", limite: limiteSes, limiteOriginal: limiteSes,
       objetivos, movidos: ajustado ? plan.pendientes.slice() : [],
       checkin: E.chk && Object.keys(E.chk).length ? { ...E.chk } : null, liviano: !!liviano, vuelta: diasSin > REGLAS.vueltaDias ? diasSin : 0 };
     await DB.put("sesiones", s);
@@ -913,6 +923,7 @@ async function importarRespaldo(archivo) {
     for (const [k, v] of Object.entries(datos.ajustes || {})) await guardarAjuste(k, v);
     for (const s of ["sesiones", "series", "pesoCorporal"]) for (const x of datos[s] || []) await DB.put(s, x);
     toast("Datos restaurados (" + (datos.sesiones || []).length + " entrenamientos)");
+    await aplicarBalance();
     mostrar("inicio");
   } catch (e) { toast("Error: " + e.message); }
 }
@@ -1063,7 +1074,7 @@ const mediana = (a) => { const b = a.slice().sort((x, y) => x - y), m = Math.flo
 const objetivo = (s, e) => (s.objetivos && s.objetivos[e] != null ? s.objetivos[e] : reglas(e).series);
 const hora = (ts) => { const d = new Date(ts); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
 const durTxt = (seg) => hhmm(seg * 1000);
-const nombreSesion = (s) => (s.tipo === "pendientes" ? "Pendientes de otros días" : DIAS[s.dia].nombre);
+const nombreSesion = (s) => (s.tipo === "pendientes" ? "Pendientes de otros días" : s.nombre || (!s.rutina && NOMBRES_RUTINA1[s.dia]) || DIAS[s.dia].nombre);
 const tituloSesion = (s) => (s.tipo === "pendientes" ? "Pendientes" : textoDia(s.dia));
 
 // Ritmo real a partir del historial (si hay pocos datos, usa el ritmo inicial medido)
@@ -1133,7 +1144,8 @@ async function planDelDia(ejercicios, limiteMin, dia) {
   const completo = rit.calentamiento + estimar(base, rit);
   const aj = ajustar(base, rit, limiteMin * 60 - rit.calentamiento);
   return { rit, prioridad, completo, ajustado: rit.calentamiento + aj.t, recortes: aj.recortes, pendientes: aj.pendientes,
-    objetivos: Object.fromEntries(aj.items.map((x) => [x.e, x.n])), entra: completo <= limiteMin * 60 };
+    objetivos: Object.fromEntries(aj.items.map((x) => [x.e, x.n])), entra: completo <= limiteMin * 60,
+    tolerable: completo <= (limiteMin + REGLAS.toleranciaMin) * 60 };
 }
 
 // Lo que falta de la sesión en curso
@@ -1290,6 +1302,7 @@ function aplicarLetra(px) { document.documentElement.style.setProperty("--letra"
   aplicarLetra((await ajuste("letra")) || 20);
   await cargarPesoCorporal();
   await corregirMancuernasV7();
+  await aplicarBalance();
   const perfil = await ajuste("perfil");
   if (!perfil || !perfil.nacimiento) return mostrar("config");
   const activa = (await DB.todos("sesiones")).find((s) => !s.fin);

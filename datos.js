@@ -1218,4 +1218,91 @@ REGLAS.volumen = { min: 10, max: 20 };   // series efectivas por músculo por se
 REGLAS.limiteMantenimiento = 55;          // minutos
 REGLAS.limiteCorto = 60;                  // cuando hay poco tiempo por agenda o estrés
 REGLAS.vueltaDias = 10;                   // si pasaron más días sin entrenar, la primera sesión baja 10% el peso
+REGLAS.toleranciaMin = 10;                // si el plan completo se pasa del límite hasta 10 min, no se recorta
 const MUSCULOS_SEMANA = ["pecho", "espalda", "hombros", "biceps", "triceps", "cuadriceps", "isquios", "gluteos", "gemelos"];
+
+// =====================================================================
+// RUTINA 2 (11/10): 4 días, combina la Rutina 1 y la Rutina 2 de Emiliano + hip thrust.
+// Motivo: la parte de arriba pasaba de 20 series por semana y las piernas quedaban cortas.
+// Orden pensado para respetar 48 h: después de pecho van piernas, después espalda, después hombros/posterior.
+// =====================================================================
+const RUTINA_VERSION = 2;
+// Nombres de los días de la rutina anterior (para que el historial viejo se siga viendo bien)
+const NOMBRES_RUTINA1 = { 1: DIAS[1].nombre, 2: DIAS[2].nombre, 3: DIAS[3].nombre };
+// Día de la rutina nueva que conviene después del último día de la rutina anterior
+const SIGUIENTE_DESDE_RUTINA1 = { 1: 2, 2: 4, 3: 1 };
+
+Object.assign(EJERCICIOS, {
+ sillon_cuadriceps: {
+  nombre: "Sillón de cuádriceps", tipo: "aislamiento", principal: "cuadriceps", secundarios: [], pesoCorporal: false,
+  nota: "De la Rutina 2 de Emiliano", gif: "videos/0585-my33uHU.gif",
+  pasos: ["Ajustá el asiento y el respaldo para que la rodilla quede alineada con el eje de la máquina.",
+    "Sentate con la espalda apoyada y el rodillo sobre los tobillos.",
+    "Agarrate de las manijas para no moverte.",
+    "Estirá las piernas hasta extender las rodillas, levantando el peso.",
+    "Hacé una pausa corta arriba y bajá despacio.",
+    "Repetí las repeticiones indicadas."],
+  original: "lever leg extension" },
+ hip_thrust: {
+  nombre: "Hip thrust con barra", tipo: "compuesto", principal: "gluteos", secundarios: ["isquios"], pesoCorporal: false,
+  nota: "El mejor ejercicio directo de glúteos (lo agrega el entrenador)", gif: "videos/3562-qg2PGl6.gif",
+  pasos: ["Sentate en el piso con la parte alta de la espalda apoyada en el borde de un banco y los pies apoyados, al ancho de la cadera.",
+    "Apoyá la barra sobre la cadera (con una almohadilla si hay) y sostenela con las dos manos.",
+    "Apretá los glúteos y empujá con los talones para subir la cadera hasta que rodillas, cadera y hombros queden en línea.",
+    "Hacé una pausa arriba apretando los glúteos.",
+    "Bajá la cadera despacio.",
+    "Repetí las repeticiones indicadas."],
+  original: "barbell glute bridge two legs on bench" },
+ parada_burro: {
+  nombre: "Gemelos parada de burro", tipo: "aislamiento", principal: "gemelos", secundarios: [], pesoCorporal: false,
+  nota: "De la Rutina 2 de Emiliano", gif: "videos/1253-C9LuR4A.gif",
+  pasos: ["Ajustá la máquina a tu altura.",
+    "Ponete de frente a la máquina, con las puntas de los pies en la plataforma y los talones afuera.",
+    "Apoyá las manos en las manijas para mantener el equilibrio.",
+    "Subí los talones lo más alto que puedas, quedando en puntas de pie.",
+    "Hacé una pausa arriba y bajá los talones despacio, hasta sentir el estiramiento.",
+    "Repetí las repeticiones indicadas."],
+  original: "lever donkey calf raise" },
+});
+Object.assign(EQUIPO, { sillon_cuadriceps: "maquina", hip_thrust: "barra", parada_burro: "maquina" });
+
+const CAL_RUTINA1 = { 1: CALENTAMIENTO[1], 2: CALENTAMIENTO[2], 3: CALENTAMIENTO[3] };
+DIAS[1] = { nombre: "Pecho y bíceps",
+  ejercicios: ["banco_plano", "banco_inclinado", "aperturas_planas", "aperturas_inclinadas", "biceps_barra_w", "biceps_mancuernas", "biceps_concentrado"] };
+DIAS[2] = { nombre: "Piernas · cuádriceps y gemelos",
+  ejercicios: ["sentadillas", "estocadas", "sillon_cuadriceps", "gemelos_prensa"],
+  series: { sillon_cuadriceps: 4, gemelos_prensa: 4 } };
+DIAS[3] = { nombre: "Espalda y tríceps",
+  ejercicios: ["dominadas", "remo_maquina", "dorsalera_abierto", "fondos", "triceps_maquina", "triceps_polea"] };
+DIAS[4] = { nombre: "Hombros, isquios y glúteos",
+  ejercicios: ["press_militar", "vuelos_laterales", "vuelos_posteriores", "camilla_isquios", "hip_thrust", "parada_burro"],
+  series: { vuelos_laterales: 4, camilla_isquios: 4 } };
+CALENTAMIENTO[1] = CAL_RUTINA1[1];
+CALENTAMIENTO[2] = CAL_RUTINA1[3];   // la entrada en calor de piernas
+CALENTAMIENTO[3] = CAL_RUTINA1[2];   // la entrada en calor de espalda
+CALENTAMIENTO[4] = [
+  { e: "bici", dosis: "3 min, ritmo suave", seg: 180, temporizador: true },
+  { e: "rotacion_externa", dosis: "12 por brazo, muy liviano", seg: 60 },
+  { e: "vuelos_posteriores_livianos", dosis: "12 repeticiones con mancuernas de 3 kg", seg: 40 },
+  { e: "gran_estiramiento", dosis: "3 por lado", seg: 60 },
+  { e: "puente_gluteos", dosis: "12 repeticiones", seg: 40 },
+  { e: "press_militar", dosis: "Aproximación: barra sola × 12, después un 50% del peso de trabajo × 8", seg: 120 },
+];
+// Copia de la rutina tal como la armamos: el balanceador semanal parte siempre de acá
+const RUTINA_BASE = JSON.parse(JSON.stringify({ 1: DIAS[1], 2: DIAS[2], 3: DIAS[3], 4: DIAS[4] }));
+const DIAS_RUTINA = [1, 2, 3, 4];
+
+// ---------- Balanceador semanal ----------
+// Una vez por semana compara las series reales de cada músculo con la meta (10 a 20) y propone cambios chicos.
+REGLAS.balance = {
+  cadaDias: 7,          // cada cuánto revisa
+  minSesiones: 4,       // entrenamientos normales necesarios en la semana para sacar conclusiones
+  excesoSobre: 24,      // recorta solo si un músculo pasa de este número (20 + margen)
+  maxSuma: 2,           // como mucho +2 series sobre lo que trae la rutina en un ejercicio
+  maxResta: 1,          // como mucho −1 serie sobre lo que trae la rutina
+  topeSeries: 5,        // ningún ejercicio pasa de 5 series
+  maxCambios: 3,        // cambios por semana (de a poco)
+};
+// Si un músculo queda corto y la rutina no tiene cómo sumarle, se agrega uno de estos (3 series)
+const COMPLEMENTOS = { gluteos: "hip_thrust", cuadriceps: "sillon_cuadriceps", gemelos: "parada_burro", isquios: "camilla_isquios",
+  pecho: "aperturas_planas", espalda: "remo_maquina", hombros: "vuelos_laterales", biceps: "biceps_mancuernas", triceps: "triceps_polea" };
