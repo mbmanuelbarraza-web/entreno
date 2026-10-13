@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 3 · v3";
+const VERSION_APP = "Etapa 3 · v4";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -260,6 +260,8 @@ const PANTALLAS = {
     const n = hoy.length + 1;
     // Indicación del entrenador (si ya hay historial)
     const pres = u === null ? null : await prescribir(e, s);
+    // si en la 1ª serie de hoy te sobraban 3 o más, el peso de las series que quedan ya subió
+    if (pres && s.subeHoy && s.subeHoy[e] != null) { pres.peso = s.subeHoy[e]; pres.razon = "Subimos el peso: en la primera serie te sobraban 3 o más repeticiones."; }
     E.pres = pres;
     if (!E.valoresListos && pres) { E.peso = pres.peso; E.reps = pres.reps; E.valoresListos = true; }
     // Valores iniciales: lo de la última vez (misma serie), o la serie anterior de hoy
@@ -721,8 +723,11 @@ const ACCIONES = {
     if (siguienteEj) { E.ejercicio = siguienteEj; E.valoresListos = false; E.manual = false; }
     else E.valoresListos = true; // mantiene peso y reps para la próxima serie
     await mostrar(n >= r.series && !siguienteEj ? "sesion" : "ejercicio");
-    if (n < r.series || siguienteEj) empezarDescanso(r.descanso, prox, { ...(ultima ? { aviso: "¡Última serie de este ejercicio!", ultima: true } : {}), rir: true });
-    else toast("¡Terminaste todos los ejercicios! Tocá «Terminar entrenamiento».");
+    // Se pregunta cuántas repeticiones sobraban solo en la 1ª serie (para corregir el peso hoy) y en la última (decide la próxima vez)
+    const rirModo = n >= r.series ? "ultima" : n === 1 ? "primera" : null;
+    E.rirModo = rirModo; E.rirEj = e; E.rirBase = E.peso; E.rirUnidad = unidad;
+    if (n < r.series || siguienteEj) empezarDescanso(r.descanso, prox, { ...(ultima ? { aviso: "¡Última serie de este ejercicio!", ultima: true } : {}), rir: rirModo });
+    else { toast("¡Terminaste todos los ejercicios! Tocá «Terminar entrenamiento»."); hojaRirFinal(); }
     E.proyCache = 0; revisarTiempo("serie");
   },
   async "borrar-serie"(d) {
@@ -943,7 +948,7 @@ function empezarDescanso(segundos, texto, op = {}) {
   $("#d-prox").classList.toggle("ultima", !!op.ultima);
   $("#d-rir").hidden = !op.rir;
   document.querySelectorAll("#d-rir button").forEach((b) => b.classList.add("sec"));
-  $("#d-rir-ok").textContent = "Me ayuda a elegir el peso de la próxima vez";
+  $("#d-rir-ok").textContent = op.rir === "primera" ? "Si te sobran 3 o más, subimos el peso ya para las series que quedan" : "Con esto elijo el peso de la próxima vez";
   $("#d-ver-ej").hidden = D.esCal;
   $("#d-ver-lista").textContent = D.esCal ? "Ver entrada en calor" : "Ver lista del día";
   $("#d-ver-lista").dataset.v = D.esCal ? "calentamiento" : "lista";

@@ -361,7 +361,10 @@ Object.assign(ACCIONES, {
     if (x) { x.rir = +d.v; await DB.put("series", x); }
     document.querySelectorAll("#d-rir button").forEach((b) => b.classList.toggle("sec", b.dataset.v !== d.v));
     $("#d-rir-ok").textContent = "Anotado ✓";
+    if (E.rirModo === "primera") await subirPesoHoy(d.v === "3");
   },
+  async "rir-hoja"(d) { await ACCIONES.rir(d); cerrarHoja(); toast("Anotado ✓ · Tocá «Terminar entrenamiento»"); },
+  "rir-hoja-saltear"() { cerrarHoja(); },
 
   // Medidas
   async "guardar-medidas"() {
@@ -561,3 +564,31 @@ Object.assign(ACCIONES, {
     toast("Volviste a la rutina original"); return mostrar("ajustes");
   },
 });
+
+// ---------- Ajuste del peso durante el ejercicio ----------
+// Si en la 1ª serie te sobraban 3 o más repeticiones, el peso es liviano: sube un paso para las series que quedan.
+// Si cambiás la respuesta, vuelve al peso original.
+async function subirPesoHoy(subir) {
+  const e = E.rirEj, s = await DB.get("sesiones", E.sesion);
+  if (!s || !e || E.ejercicio !== e) return;
+  const u = E.rirUnidad || "kg", paso = await pasoDe(e, u);
+  const antes = E.peso;
+  const nuevo = subir ? E.rirBase + paso : E.rirBase;
+  s.subeHoy = s.subeHoy || {};
+  if (subir) s.subeHoy[e] = nuevo; else delete s.subeHoy[e];
+  await DB.put("sesiones", s);
+  E.peso = nuevo;
+  if (antes !== nuevo) {
+    D.texto = D.texto.replace(fmtPeso(antes, u, e), fmtPeso(nuevo, u, e));
+    $("#d-prox").textContent = D.texto; reprogramarDescanso();
+    if (E.pantalla === "ejercicio") PANTALLAS.ejercicio();
+  }
+  if (subir) $("#d-rir-ok").innerHTML = `<b class="ok">Subí a ${fmtPeso(nuevo, u, e)} para las series que quedan.</b>`;
+}
+// Última serie del día: no hay descanso, así que la pregunta aparece en una ventana
+function hojaRirFinal() {
+  hoja(`<p style="margin:0 0 8px"><b>Última serie del día: ¿cuántas repeticiones más podías hacer?</b></p>
+    <div class="fila3"><button class="sec" data-accion="rir-hoja" data-v="0">Ninguna</button><button class="sec" data-accion="rir-hoja" data-v="1">1 o 2</button><button class="sec" data-accion="rir-hoja" data-v="3">3 o más</button></div>
+    <p class="chico suave">Con esto elijo el peso de la próxima vez.</p>
+    <button class="sec" data-accion="rir-hoja-saltear">Saltear</button>`);
+}
