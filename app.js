@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 3 · v5";
+const VERSION_APP = "Etapa 3 · v6";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -156,7 +156,8 @@ const PANTALLAS = {
     const semana = await tarjetaSemana();
     const medidas = activa ? "" : await tarjetaMedidas();
     const pend = activa ? [] : await pendientesConEstado();
-    const pendListos = pend.filter((p) => p.listo <= Date.now() && !DIAS[dia].ejercicios.includes(p.e));
+    const agregados = activa ? [] : await agregablesHoy(dia, plan, limiteHoy);
+    const pendListos = pend.filter((p) => p.listo <= Date.now() && !DIAS[dia].ejercicios.includes(p.e) && !agregados.some((a) => a.e === p.e));
     let planHtml = "";
     if (plan) {
       if (plan.entra) planHtml = `<p class="ok"><b>Estimado ≈ ${durTxt(plan.completo)}</b> · entra en tu límite de ${durTxt(limiteHoy * 60)}</p>`;
@@ -168,6 +169,8 @@ const PANTALLAS = {
           <ul class="chico">${cambios.map((c) => `<li>${c}</li>`).join("")}${plan.pendientes.map((e) => `<li>${EJERCICIOS[e].nombre}: <b>queda pendiente para otro día</b></li>`).join("")}</ul>
           <p class="ok chico">Plan ajustado ≈ ${durTxt(plan.ajustado)}</p>`;
       }
+      if (agregados.length) planHtml += `<p class="chico" style="margin-top:8px">➕ Sumé ${agregados.length > 1 ? "pendientes que ya descansaron" : "un pendiente que ya descansó"}: <b>${agregados.map((a) => EJERCICIOS[a.e].nombre).join(", ")}</b>. Total ≈ <b>${durTxt(agregados[agregados.length - 1].t)}</b>, dentro de tu límite.</p>
+        <button class="sec chico" data-accion="sin-pendientes-hoy" style="margin:2px 0 6px">No agregar hoy</button>`;
       planHtml += `<p class="chico suave">Calculado con tu ritmo real: ${Math.round(plan.rit.compuesto)} s por serie pesada y ${Math.round(plan.rit.aislamiento)} s por serie de aislamiento (además del descanso), ${Math.round(plan.rit.cambio / 60 * 10) / 10} min por cambio de ejercicio.</p>`;
     }
 
@@ -188,6 +191,7 @@ const PANTALLAS = {
         ${opcionesDia.length > 1 ? `<div class="fila${opcionesDia.length} dias">${opcionesDia.map((d) => `<button class="sec ${d === dia ? "activo" : ""}" data-accion="elegir-dia" data-d="${d}">${textoDia(d)}</button>`).join("")}</div>` : ""}
         <div class="tarjeta" style="margin-top:12px">
           ${DIAS[dia].ejercicios.map((e) => `<div class="chico">· ${EJERCICIOS[e].nombre} <span class="suave">${!plan.tolerable && plan.pendientes.includes(e) ? "otro día" : `${plan.tolerable ? seriesDe(dia, e) : plan.objetivos[e] || 0}×${reglas(e).repsMin}-${reglas(e).repsMax}`}${plan.prioridad.includes(EJERCICIOS[e].principal) ? " · prioridad" : ""}</span></div>`).join("")}
+          ${agregados.map((a) => `<div class="chico">· ${EJERCICIOS[a.e].nombre} <span class="suave">${a.series}×${reglas(a.e).repsMin}-${reglas(a.e).repsMax} · <span class="ok">pendiente sumado</span></span></div>`).join("")}
         </div>
         <div class="tarjeta">${planHtml}</div>
         ${plan.tolerable ? `<button class="grande" data-accion="empezar" data-d="${dia}" data-modo="completo">Empezar</button>` : `
@@ -241,7 +245,7 @@ const PANTALLAS = {
         const n = hechas(e), tot = objetivo(s, e), salt = s.saltados.includes(e), mov = (s.movidos || []).includes(e);
         return `<div class="item ${n >= tot || salt || mov ? "hecho" : ""}" data-accion="abrir-ej" data-e="${e}">
           <img src="${gifUrl(e)}" alt="" loading="lazy">
-          <div class="txt"><b>${EJERCICIOS[e].nombre}</b><span class="chico suave">${mov ? "pendiente para otro día" : `${tot} series · ${reglas(e).repsMin}-${reglas(e).repsMax} reps`}${tot < seriesDe(s.dia, e) && !mov ? (s.liviano ? " (liviano)" : " (ajustado)") : ""}</span></div>
+          <div class="txt"><b>${EJERCICIOS[e].nombre}</b><span class="chico suave">${mov ? "pendiente para otro día" : `${tot} series · ${reglas(e).repsMin}-${reglas(e).repsMax} reps`}${(s.agregados || []).includes(e) ? ' · <span class="ok">pendiente sumado</span>' : ""}${tot < seriesDe(s.dia, e) && !mov && !(s.agregados || []).includes(e) ? (s.liviano ? " (liviano)" : " (ajustado)") : ""}</span></div>
           <span class="prog">${mov ? "→ otro día" : salt ? "salteado" : n + "/" + tot}</span></div>`;
       }).join("")}
       <button class="${series.length ? "" : "sec"}" data-accion="terminar" id="b-terminar">Terminar entrenamiento</button>
@@ -577,11 +581,13 @@ const ACCIONES = {
     const liviano = d.liviano === "1" || (modo && modo.tipo === "liviano") || (await ajuste("livianoProxima"));
     if (await ajuste("livianoProxima")) await guardarAjuste("livianoProxima", false);
     const objetivos = ajustado ? { ...plan.objetivos } : Object.fromEntries(DIAS[dia].ejercicios.map((e) => [e, seriesDe(dia, e)]));
+    const agregados = ajustado ? [] : await agregablesHoy(dia, plan, limite);
+    for (const a of agregados) objetivos[a.e] = a.series;
     if (liviano) for (const e in objetivos) if (objetivos[e] > 0) objetivos[e] = Math.max(2, objetivos[e] - 1);
     // ¿vuelve después de muchos días sin entrenar?
     const ultimaFin = Math.max(0, ...(await DB.todos("sesiones")).filter((x) => x.fin).map((x) => x.fin));
     const diasSin = ultimaFin ? Math.floor((Date.now() - ultimaFin) / 86400000) : 0;
-    const s = { id: nuevoId(), dia, inicio: Date.now(), fin: null, ejercicios: DIAS[dia].ejercicios.slice(), saltados: [], bloques: {},
+    const s = { id: nuevoId(), dia, inicio: Date.now(), fin: null, ejercicios: DIAS[dia].ejercicios.concat(agregados.map((a) => a.e)), agregados: agregados.map((a) => a.e), saltados: [], bloques: {},
       rutina: DIAS[dia].especial ? null : RUTINA_VERSION, nombre: DIAS[dia].nombre,
       opcion: ajustado ? "ajustado" : "completo", limite: limiteSes, limiteOriginal: limiteSes,
       objetivos, movidos: ajustado ? plan.pendientes.slice() : [],
@@ -594,6 +600,7 @@ const ACCIONES = {
     activarPantalla();
     mostrar("sesion", { sesion: s.id });
   },
+  async "sin-pendientes-hoy"() { await guardarAjuste("sinPendientesHoy", new Date().toDateString()); toast("Ok, hoy solo tu rutina"); mostrar("inicio"); },
   async "empezar-pendientes"() {
     const pend = (await pendientesConEstado()).filter((p) => p.listo <= Date.now());
     if (!pend.length) return toast("No hay pendientes listos");
@@ -1209,12 +1216,33 @@ function listoDesde(e, ult) {
 // ---------- Pendientes ----------
 async function leerPendientes() {
   const lim = Date.now() - REGLAS.pendientesDias * 86400000;
-  return ((await ajuste("pendientes")) || []).filter((p) => p.desde > lim && EJERCICIOS[p.e]);
+  // se descartan los viejos y los de ejercicios que ya no están en tu rutina (ej.: press de hombros en máquina)
+  const enRutina = new Set(DIAS_RUTINA.flatMap((d) => DIAS[d].ejercicios));
+  return ((await ajuste("pendientes")) || []).filter((p) => p.desde > lim && EJERCICIOS[p.e] && enRutina.has(p.e));
 }
 const guardarPendientes = (lista) => guardarAjuste("pendientes", lista);
 async function pendientesConEstado() {
   const ult = await ultimoTrabajo();
   return (await leerPendientes()).map((p) => ({ ...p, listo: listoDesde(p.e, ult) }));
+}
+// Pendientes que el entrenador suma solo al día de hoy: ya descansaron, no chocan con el día de mañana
+// (48 h del músculo principal) y entran en tu límite de tiempo sin recortar nada.
+async function agregablesHoy(dia, plan, limiteMin) {
+  if (!plan || !plan.entra || DIAS[dia].especial || (await leerModo())) return [];
+  if ((await ajuste("sinPendientesHoy")) === new Date().toDateString()) return [];
+  const i = DIAS_RUTINA.indexOf(dia); if (i < 0) return [];
+  const manana = DIAS[DIAS_RUTINA[(i + 1) % DIAS_RUTINA.length]];
+  const prinManana = new Set(manana.ejercicios.map((e) => EJERCICIOS[e].principal));
+  const rit = plan.rit, out = [];
+  let t = plan.completo;
+  for (const p of (await pendientesConEstado()).sort((a, b) => a.listo - b.listo)) {
+    if (p.listo > Date.now() || DIAS[dia].ejercicios.includes(p.e) || out.some((x) => x.e === p.e)) continue;
+    if (prinManana.has(EJERCICIOS[p.e].principal)) continue;
+    const suma = estimar([{ e: p.e, n: p.series }], rit) + rit.cambio;
+    if (t + suma > limiteMin * 60) continue;
+    t += suma; out.push({ ...p, t });
+  }
+  return out;
 }
 function cuandoTxt(ts) {
   if (ts <= Date.now()) return '<span class="ok">✓ listo para hoy</span>';
