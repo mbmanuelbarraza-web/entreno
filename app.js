@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 3 · v4";
+const VERSION_APP = "Etapa 3 · v5";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -435,7 +435,7 @@ const PANTALLAS = {
       <div class="tarjeta">
         <div class="ajuste">
           <button class="sec" data-accion="peso-corp" data-d="-0.1">−</button>
-          <div class="valor"><b id="v-pc">${kg(E.pesoCorp)}</b><span>kg</span></div>
+          <div class="valor"><input id="v-pc" class="num-grande" type="text" inputmode="decimal" enterkeyhint="done" value="${kg(E.pesoCorp)}" onfocus="this.select()" aria-label="Peso en kg"><span>kg · tocá el número para escribirlo</span></div>
           <button class="sec" data-accion="peso-corp" data-d="0.1">+</button>
         </div>
         <button data-accion="guardar-peso">Guardar peso de hoy</button>
@@ -860,8 +860,9 @@ const ACCIONES = {
   "hist-ej": (d) => mostrar("historial", { histEj: d.e }),
   "hist-volver": () => mostrar("historial", { histEj: null }),
 
-  "peso-corp": (d) => { E.pesoCorp = Math.max(30, Math.round((E.pesoCorp + +d.d) * 100) / 100); $("#v-pc").textContent = kg(E.pesoCorp); },
+  "peso-corp": (d) => { leerPesoEscrito(); E.pesoCorp = Math.max(30, Math.round((E.pesoCorp + +d.d) * 100) / 100); $("#v-pc").value = kg(E.pesoCorp); },
   async "guardar-peso"() {
+    if (!leerPesoEscrito()) return toast("Escribí un peso válido, por ejemplo 64,5");
     await DB.put("pesoCorporal", { id: nuevoId(), fecha: Date.now(), kg: E.pesoCorp });
     toast("Peso guardado"); PANTALLAS.peso();
   },
@@ -903,6 +904,14 @@ document.addEventListener("click", (ev) => {
   }
   if (fn) fn(el.dataset);
 });
+// Peso corporal escrito con el teclado (acepta coma o punto)
+function leerPesoEscrito() {
+  const i = $("#v-pc"); if (!i) return true;
+  const v = parseFloat(String(i.value).replace(",", "."));
+  if (isNaN(v) || v < 30 || v > 250) return false;
+  E.pesoCorp = Math.round(v * 100) / 100; return true;
+}
+document.addEventListener("keydown", (ev) => { if (ev.target.id === "v-pc" && ev.key === "Enter") ev.target.blur(); });
 document.addEventListener("change", (ev) => { if (ev.target.id === "archivo" && ev.target.files[0]) importarRespaldo(ev.target.files[0]); });
 
 // =====================================================================
