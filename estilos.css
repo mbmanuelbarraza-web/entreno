@@ -199,3 +199,8 @@ details.plegable[open] > summary { margin-bottom:8px; }
 .tarjeta.receta { border:1.5px solid rgba(255,122,26,.7); background:linear-gradient(180deg, rgba(255,122,26,.10), rgba(255,122,26,.02)), var(--tarjeta); }
 .receta-num { font-size:40px; letter-spacing:-0.02em; }
 #app > h2:first-of-type { font-size:28px; font-weight:800; letter-spacing:-0.02em; margin:4px 0 10px; }
+/* Herramientas de gimnasio */
+.discos { margin:0 0 6px; font-size:15px; color:var(--texto); }
+.discos b { color:var(--naranja2); font-variant-numeric:tabular-nums; }
+.aprox { margin-top:10px; padding:10px 12px; border-radius:12px; background:rgba(255,255,255,.05); font-size:15px; line-height:1.5; }
+.receta button.chico { width:100%; margin-top:8px; }

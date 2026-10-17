@@ -33,7 +33,10 @@ async function historialDe(e, excluirSesion) {
 async function prescribir(e, s) {
   const hist = await historialDe(e, s.id);
   if (!hist.length) return null; // primera vez: elegís vos
-  const r = reglas(e), ult = hist[hist.length - 1];
+  // se toma como referencia la última sesión normal: las livianas y las de descarga no sirven para decidir subir
+  const raras = new Set((await DB.todos("sesiones")).filter((x) => x.liviano || x.descarga).map((x) => x.id));
+  const normales = hist.filter((h) => !raras.has(h.series[0].sesion));
+  const r = reglas(e), ult = (normales.length ? normales : hist)[(normales.length ? normales : hist).length - 1];
   const u = (await unidadDe(e)) || "kg";
   const paso = await pasoDe(e, u);
   const conv = (x) => (uSerie(x) === u ? x.peso : uSerie(x) === "lb" ? x.peso * 0.4536 : x.peso / 0.4536);
@@ -52,7 +55,11 @@ async function prescribir(e, s) {
   const uTxt = (v) => fmtPeso(v, u, e);
   let p = peso, objetivoReps, accion, razon;
   const todasMax = reps.every((x) => x >= r.repsMax);
-  if (equipo(e) === "corporal" && peso === 0) {
+  if (s.descarga) {
+    // Semana de descarga: mismo peso, mismas repeticiones, menos series y sin llegar al fallo
+    objetivoReps = Math.min(r.repsMax, minR); accion = "mantener";
+    razon = "Semana de descarga: mismo peso, menos series y dejá 2 o 3 repeticiones en reserva. Es para recuperarte y volver a subir.";
+  } else if (equipo(e) === "corporal" && peso === 0) {
     // Peso del cuerpo sin lastre: se progresa sumando repeticiones, no kilos
     const maxR = Math.max(...reps);
     objetivoReps = Math.min(REGLAS.corporalMaxReps, Math.max(r.repsMin, (rir === 0 ? minR : maxR) + 1));
@@ -79,7 +86,8 @@ async function prescribir(e, s) {
     nota = "Hace 3 sesiones que no mejorás en este ejercicio. Si sigue así, probá bajar un 10% el peso y sumar 2 repeticiones, o pedile a Emiliano una variante.";
   if (s.vuelta) { p = redondear(p * 0.9, paso); razon = `Volvés después de ${s.vuelta} días: bajamos un 10% para retomar sin lesionarte. ` + razon; }
   if (s.liviano) nota = "Día liviano: dejá 2 repeticiones en reserva, sin llegar al fallo. " + nota;
-  return { peso: Math.max(0, p), reps: objetivoReps, accion, razon, nota, unidad: u, mejores };
+  if (s.descarga) nota = ""; // en la descarga no se habla de estancamiento
+  return { peso: Math.max(0, p), reps: objetivoReps, accion, razon, nota, unidad: u, mejores, anterior: { peso, reps: minR } };
 }
 
 // ---------- Series por músculo por semana ----------
@@ -106,7 +114,11 @@ async function rezagados() {
 }
 
 // ---------- Modo de entrenamiento y eventos ----------
-const leerModo = async () => (await ajuste("modo")) || null;
+async function leerModo() {
+  const m = (await ajuste("modo")) || null;
+  if (m && m.tipo === "descarga" && m.hasta && Date.now() > m.hasta) { await guardarAjuste("modo", null); return null; }
+  return m;
+}
 const guardarModo = (m) => guardarAjuste("modo", m);
 async function leerEventos() { return (await ajuste("eventos")) || []; }
 async function registrarEvento(ev) {
@@ -119,6 +131,7 @@ const MODOS = {
   corto: { titulo: "Sesiones cortas", texto: "Seguís con tu rutina, pero con límite de 1 hora." },
   mantenimiento: { titulo: "Modo mantenimiento", texto: "2 días por semana, cuerpo completo, ~50 min. Alcanza para no perder lo que ganaste." },
   viaje: { titulo: "Modo viaje", texto: "Rutina sin gimnasio, con el peso del cuerpo, ~30 min." },
+  descarga: { titulo: "Semana de descarga", texto: "Mitad de las series, mismo peso y sin llegar al fallo. Termina sola a los 7 días." },
   pausa: { titulo: "Pausa", texto: "Hoy toca descansar. Si fue por fiebre, esperá 24 a 48 h sin fiebre antes de volver y consultá a un médico si no mejorás." },
 };
 
@@ -172,7 +185,7 @@ async function detectarCambio() {
   // 3) Bajó la fuerza en el último entrenamiento
   const ultima = sesiones[0];
   const bajas = [];
-  if (!ultima.liviano && !ultima.vuelta) for (const e of new Set((await DB.porIndice("series", "sesion", ultima.id)).map((x) => x.ejercicio))) {
+  if (!ultima.liviano && !ultima.vuelta && !ultima.descarga) for (const e of new Set((await DB.porIndice("series", "sesion", ultima.id)).map((x) => x.ejercicio))) {
     const hist = await historialDe(e);
     const i = hist.findIndex((h) => h.series[0].sesion === ultima.id);
     if (i < 1) continue;
@@ -210,7 +223,8 @@ async function tarjetasEntrenador(dia) {
   if (modo && MODOS[modo.tipo]) {
     html += `<div class="tarjeta aviso"><b>${MODOS[modo.tipo].titulo}</b>${modo.motivo ? ` <span class="suave chico">(${MOTIVOS[modo.motivo] || modo.motivo})</span>` : ""}
       <p class="chico">${MODOS[modo.tipo].texto}</p>
-      <button class="sec" data-accion="volver-normal">Ya volví a la normalidad</button></div>`;
+      ${modo.tipo === "descarga" ? `<p class="chico suave">Termina el ${new Date(modo.hasta).toLocaleDateString("es-AR", { weekday: "long", day: "numeric" })}.</p>` : ""}
+      <button class="sec" data-accion="volver-normal">${modo.tipo === "descarga" ? "Terminar la descarga antes" : "Ya volví a la normalidad"}</button></div>`;
   }
   const cambio = await detectarCambio();
   if (cambio) {
@@ -221,6 +235,7 @@ async function tarjetasEntrenador(dia) {
           <button class="sec chico" data-accion="motivo" data-m="ok" data-o="${cambio.origen}" style="margin-top:8px">Todo bien, fue algo puntual</button></div>`;
   }
   html += await avisoRecuperacion(dia);
+  html += await tarjetaDescarga();
   html += await tarjetaBalance();
   return html;
 }
@@ -653,3 +668,57 @@ async function avisarRecord(e) {
   if (el && !$("#descanso").hidden) { $("#d-record-txt").textContent = textoRecord(r); el.hidden = false; }
   return r;
 }
+
+// =====================================================================
+// SEMANA DE DESCARGA "SOLO CUANDO HACE FALTA" (decisión de Manuel, 18/10)
+// La app la propone si detecta estancamiento en varios ejercicios o cansancio repetido.
+// Descarga = 7 días con la mitad de las series, el mismo peso y sin llegar al fallo.
+// =====================================================================
+REGLAS.descarga = { dias: 7, cadaMinDias: 28, posponerDias: 7, minEstancados: 3, livianasEn14: 3, cansancioEn14: 2, historialMinDias: 21 };
+
+async function motivosDescarga() {
+  const D = 86400000, ahora = Date.now(), R = REGLAS.descarga;
+  if (await leerModo()) return null;
+  const est = (await ajuste("descarga")) || {};
+  if (est.ultima && ahora - est.ultima < R.cadaMinDias * D) return null;
+  if (est.posponer && ahora < est.posponer) return null;
+  const ses = (await DB.todos("sesiones")).filter((s) => s.fin);
+  if (!ses.length || ahora - Math.min(...ses.map((s) => s.inicio)) < R.historialMinDias * D) return null;
+  const motivos = [];
+  // 1) estancamiento: 3 sesiones normales seguidas sin mejorar la fuerza estimada
+  const raras = new Set(ses.filter((x) => x.liviano || x.descarga).map((x) => x.id));
+  const estancados = [];
+  for (const e of new Set(DIAS_RUTINA.flatMap((d) => DIAS[d].ejercicios))) {
+    const h = (await historialDe(e)).filter((x) => !raras.has(x.series[0].sesion));
+    const mejores = h.map((x) => Math.max(...x.series.map(e1rm)));
+    if (mejores.length >= 4 && Math.max(...mejores.slice(-3)) <= Math.max(...mejores.slice(0, -3))) estancados.push(EJERCICIOS[e].nombre);
+  }
+  if (estancados.length >= R.minEstancados) motivos.push(`Hace 3 sesiones que no mejorás en ${estancados.length} ejercicios (${estancados.slice(0, 3).join(", ")}${estancados.length > 3 ? "…" : ""}).`);
+  // 2) cansancio repetido: varias sesiones livianas o avisos de cansancio en 2 semanas
+  const livianas = ses.filter((s) => s.liviano && ahora - s.inicio < 14 * D).length;
+  const cansancio = (await leerEventos()).filter((ev) => ev.tipo === "cansancio" && ahora - ev.fecha < 14 * D).length;
+  if (livianas >= R.livianasEn14 || cansancio >= R.cansancioEn14) motivos.push(`En las últimas 2 semanas tuviste ${livianas} sesiones livianas y ${cansancio} avisos de cansancio.`);
+  return motivos.length ? motivos : null;
+}
+async function tarjetaDescarga() {
+  const m = await motivosDescarga();
+  if (!m) return "";
+  return `<div class="tarjeta aviso"><b>Te conviene una semana de descarga</b>
+    ${m.map((x) => `<p class="chico" style="margin:6px 0 0">${x}</p>`).join("")}
+    <p class="chico suave" style="margin-top:8px">7 días con la mitad de las series y el mismo peso, sin llegar al fallo. El cuerpo se recupera y después suele volver a subir.</p>
+    <div class="fila2"><button data-accion="descarga-si">Empezar descarga</button><button class="sec" data-accion="descarga-no">En una semana</button></div></div>`;
+}
+Object.assign(ACCIONES, {
+  async "descarga-si"() {
+    const est = (await ajuste("descarga")) || {};
+    await guardarAjuste("descarga", { ...est, ultima: Date.now(), posponer: null });
+    await guardarModo({ tipo: "descarga", desde: Date.now(), hasta: Date.now() + REGLAS.descarga.dias * 86400000 });
+    await registrarEvento({ tipo: "descarga", origen: "entrenador" });
+    toast("Semana de descarga activada"); mostrar("inicio");
+  },
+  async "descarga-no"() {
+    const est = (await ajuste("descarga")) || {};
+    await guardarAjuste("descarga", { ...est, posponer: Date.now() + REGLAS.descarga.posponerDias * 86400000 });
+    toast("Ok, lo vuelvo a mirar en una semana"); mostrar("inicio");
+  },
+});

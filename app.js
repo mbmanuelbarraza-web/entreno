@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 4 · v1";
+const VERSION_APP = "Etapa 4 · v3";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -82,7 +82,8 @@ async function unidadDe(e) {
 }
 async function pasoDe(e, u) {
   const pasos = (await ajuste("pasos")) || {};
-  return pasos[e] || (u === "lb" ? 10 : REGLAS.pasoPeso);
+  // barra: el disco más chico es 1,25 kg por lado → de a 2,5 kg (si no, el peso indicado no se puede armar)
+  return pasos[e] || (u === "lb" ? 10 : equipo(e) === "barra" ? 2.5 : REGLAS.pasoPeso);
 }
 const uSerie = (x) => x.unidad || "kg";
 // Texto del peso: "50 lb", "12 kg c/u", "60 kg"
@@ -259,7 +260,7 @@ const PANTALLAS = {
         const n = hechas(e), tot = objetivo(s, e), salt = s.saltados.includes(e), mov = (s.movidos || []).includes(e);
         return `<div class="item ${n >= tot || salt || mov ? "hecho" : ""}" data-accion="abrir-ej" data-e="${e}">
           <img src="${gifUrl(e)}" alt="" loading="lazy">
-          <div class="txt"><b>${EJERCICIOS[e].nombre}</b><span class="chico suave">${mov ? "pendiente para otro día" : `${tot} series · ${reglas(e).repsMin}-${reglas(e).repsMax} reps`}${(s.agregados || []).includes(e) ? ' · <span class="ok">pendiente sumado</span>' : ""}${tot < seriesDe(s.dia, e) && !mov && !(s.agregados || []).includes(e) ? (s.liviano ? " (liviano)" : " (ajustado)") : ""}</span></div>
+          <div class="txt"><b>${EJERCICIOS[e].nombre}</b><span class="chico suave">${mov ? "pendiente para otro día" : `${tot} series · ${reglas(e).repsMin}-${reglas(e).repsMax} reps`}${(s.agregados || []).includes(e) ? ' · <span class="ok">pendiente sumado</span>' : ""}${tot < seriesDe(s.dia, e) && !mov && !(s.agregados || []).includes(e) ? (s.descarga ? " (descarga)" : s.liviano ? " (liviano)" : " (ajustado)") : ""}</span></div>
           <span class="prog">${mov ? "→ otro día" : salt ? "salteado" : n + "/" + tot}</span></div>`;
       }).join("")}
       <button class="${series.length ? "" : "sec"}" data-accion="terminar" id="b-terminar">Terminar entrenamiento</button>
@@ -279,6 +280,7 @@ const PANTALLAS = {
     // Indicación del entrenador (si ya hay historial)
     const pres = u === null ? null : await prescribir(e, s);
     // si en la 1ª serie de hoy te sobraban 3 o más, el peso de las series que quedan ya subió
+    if (pres && (s.repetir || {})[e]) { pres.peso = pres.anterior.peso; pres.reps = pres.anterior.reps; pres.accion = "repetir"; pres.razon = "Elegiste repetir lo de la última vez. Si hoy sale cómodo, la próxima subimos."; }
     if (pres && s.subeHoy && s.subeHoy[e] != null) { pres.peso = s.subeHoy[e]; pres.razon = "Subimos el peso: en la primera serie te sobraban 3 o más repeticiones."; }
     E.pres = pres;
     if (!E.valoresListos && pres) { E.peso = pres.peso; E.reps = pres.reps; E.valoresListos = true; }
@@ -318,7 +320,11 @@ const PANTALLAS = {
       ${pres ? `<div class="tarjeta receta">
         <p class="chico suave" style="margin:0">Tu entrenador indica para hoy</p>
         <div class="receta-num">${equipo(e) === "corporal" && !pres.peso ? "Peso corporal" : fmtPeso(pres.peso, pres.unidad, e)} × ${pres.reps}</div>
+        ${equipo(e) === "barra" && pres.peso > 0 ? `<p class="discos">Por lado: <b>${discosPorLado(pres.peso, pres.unidad)}</b></p>` : ""}
         <p class="chico">${pres.razon}</p>${pres.nota ? `<p class="chico mal">${pres.nota}</p>` : ""}
+        ${!hoy.length && (pres.accion === "subir" || pres.accion === "bajar") ? `<button class="sec chico" data-accion="repetir-anterior">Prefiero repetir lo de la última vez (${fmtPeso(pres.anterior.peso, pres.unidad, e)} × ${pres.anterior.reps})</button>` : ""}
+        ${!hoy.length && pres.accion === "repetir" ? `<button class="sec chico" data-accion="repetir-anterior" data-no="1">Volver a lo que indica el entrenador</button>` : ""}
+        ${!hoy.length ? aproximacionHtml(e, pres.peso, pres.unidad, paso) : ""}
       </div>` : ""}
       <div class="tarjeta">
         <h2>${n <= r.series ? `Serie ${n} de ${r.series}` : `Serie extra (${n})`}</h2>
@@ -345,7 +351,8 @@ const PANTALLAS = {
       <div class="fila2">
         <button class="sec" data-accion="saltear-ej">Saltear ejercicio</button>
         <button class="sec" data-accion="${siguiente ? "abrir-ej" : "ir"}" data-e="${siguiente || ""}" data-p="sesion">${siguiente ? "Siguiente →" : "Ver lista"}</button>
-      </div>`;
+      </div>
+      ${!hoy.length ? `<button class="sec" data-accion="cambiar-ej">⇄ Cambiar por otro ejercicio (máquina ocupada)</button>` : ""}`;
     actualizarReloj();
   },
 
@@ -613,6 +620,8 @@ const ACCIONES = {
     const agregados = ajustado ? [] : await agregablesHoy(dia, plan, limite);
     for (const a of agregados) objetivos[a.e] = a.series;
     if (liviano) for (const e in objetivos) if (objetivos[e] > 0) objetivos[e] = Math.max(2, objetivos[e] - 1);
+    const descarga = !!(modo && modo.tipo === "descarga");
+    if (descarga) for (const e in objetivos) if (objetivos[e] > 0) objetivos[e] = Math.max(2, Math.ceil(objetivos[e] / 2));
     // ¿vuelve después de muchos días sin entrenar?
     const ultimaFin = Math.max(0, ...(await DB.todos("sesiones")).filter((x) => x.fin).map((x) => x.fin));
     const diasSin = ultimaFin ? Math.floor((Date.now() - ultimaFin) / 86400000) : 0;
@@ -620,7 +629,7 @@ const ACCIONES = {
       rutina: DIAS[dia].especial ? null : RUTINA_VERSION, nombre: DIAS[dia].nombre,
       opcion: ajustado ? "ajustado" : "completo", limite: limiteSes, limiteOriginal: limiteSes,
       objetivos, movidos: ajustado ? plan.pendientes.slice() : [],
-      checkin: E.chk && Object.keys(E.chk).length ? { ...E.chk } : null, liviano: !!liviano, vuelta: diasSin > REGLAS.vueltaDias ? diasSin : 0 };
+      checkin: E.chk && Object.keys(E.chk).length ? { ...E.chk } : null, liviano: !!liviano, descarga, vuelta: diasSin > REGLAS.vueltaDias ? diasSin : 0 };
     await DB.put("sesiones", s);
     // los pendientes de este mismo día se hacen hoy: ya no hacen falta
     // los pendientes de hoy se borran recién al terminar (si descartás el entrenamiento, se conservan)
@@ -1399,3 +1408,58 @@ function aplicarLetra(px) { document.documentElement.style.setProperty("--letra"
   await mostrar("inicio");
   retomarDescanso();
 })();
+
+// =====================================================================
+// HERRAMIENTAS DE GIMNASIO (ideas de Strong/JEFIT/Leap)
+// =====================================================================
+// Discos por lado: en barra anotás solo los discos (los dos lados juntos), así que cada lado lleva la mitad.
+const DISCOS = { kg: [20, 15, 10, 5, 2.5, 1.25], lb: [45, 35, 25, 10, 5, 2.5] };
+function discosPorLado(total, u) {
+  let lado = total / 2; const out = [];
+  for (const d of DISCOS[u] || DISCOS.kg) while (lado >= d - 0.001) { out.push(d); lado -= d; }
+  const txt = out.length ? out.map(kg).join(" + ") : "sin discos";
+  return lado > 0.01 ? `${txt} (sobran ${kg(Math.round(lado * 100) / 100)} ${u}: no se arma exacto)` : `${txt} ${u}`;
+}
+// Series de aproximación antes de la 1ª serie de un ejercicio pesado (no se anotan ni cuentan)
+function aproximacionHtml(e, peso, u, paso) {
+  if (EJERCICIOS[e].tipo !== "compuesto" || equipo(e) === "corporal" || !(peso >= paso * 4)) return "";
+  const pasos = [[0.5, 8], [0.75, 3]].map(([f, r]) => ({ p: Math.max(paso, Math.round((peso * f) / paso) * paso), r }));
+  return `<div class="aprox"><b>Aproximación antes de la serie 1</b> <span class="suave">(no se anotan)</span><br>
+    ${pasos.map((x) => `${fmtPeso(x.p, u, e)} × ${x.r}`).join(" → ")} → descanso 1 min</div>`;
+}
+// Ejercicios que reemplazan a otro: mismo músculo principal, preferentemente del mismo tipo
+function alternativasDe(e, excluir) {
+  const ej = EJERCICIOS[e];
+  return Object.keys(EJERCICIOS).filter((k) => k !== e && !excluir.includes(k) && EJERCICIOS[k].tipo !== "calentamiento"
+      && EJERCICIOS[k].principal === ej.principal && !/press_hombros_maquina|^vuelos$/.test(k))
+    .sort((a, b) => (equipo(a) === "corporal") - (equipo(b) === "corporal") || (EJERCICIOS[b].tipo === ej.tipo) - (EJERCICIOS[a].tipo === ej.tipo));
+}
+Object.assign(ACCIONES, {
+  async "repetir-anterior"(d) {
+    const s = await DB.get("sesiones", E.sesion); s.repetir = s.repetir || {};
+    if (d.no) delete s.repetir[E.ejercicio]; else s.repetir[E.ejercicio] = true;
+    await DB.put("sesiones", s); E.valoresListos = false; E.manual = false; PANTALLAS.ejercicio();
+  },
+  async "cambiar-ej"() {
+    const s = await DB.get("sesiones", E.sesion);
+    const alt = alternativasDe(E.ejercicio, s.ejercicios);
+    if (!alt.length) return toast("No hay otro ejercicio cargado para ese músculo");
+    hoja(`<p style="margin:0 0 8px"><b>Cambiar ${EJERCICIOS[E.ejercicio].nombre} por:</b></p>
+      ${alt.map((k) => `<div class="item" data-accion="cambiar-ej-por" data-e="${k}"><img src="${gifUrl(k)}" alt="" loading="lazy">
+        <div class="txt"><b>${EJERCICIOS[k].nombre}</b><span class="chico suave">${EJERCICIOS[k].tipo === "compuesto" ? "pesado" : "aislamiento"}</span></div><span class="suave">›</span></div>`).join("")}
+      <p class="chico suave">Es solo por hoy: la rutina no cambia.</p>
+      <button class="sec" data-accion="cerrar-hoja">Cancelar</button>`);
+  },
+  async "cambiar-ej-por"(d) {
+    const s = await DB.get("sesiones", E.sesion), viejo = E.ejercicio, i = s.ejercicios.indexOf(viejo);
+    if (i < 0) return cerrarHoja();
+    s.ejercicios[i] = d.e;
+    s.objetivos = s.objetivos || {}; s.objetivos[d.e] = objetivo(s, viejo); // mismas series que el que reemplaza
+    delete s.objetivos[viejo];
+    s.reemplazos = { ...(s.reemplazos || {}), [d.e]: viejo };
+    await DB.put("sesiones", s); cerrarHoja();
+    toast(`Hoy: ${EJERCICIOS[d.e].nombre} en lugar de ${EJERCICIOS[viejo].nombre}`);
+    mostrar("ejercicio", { ejercicio: d.e, valoresListos: false, manual: false });
+  },
+  "cerrar-hoja": () => cerrarHoja(),
+});
