@@ -15,7 +15,9 @@ async function cargarPesoCorporal() {
   if (p) pesoCorporalActual = p.kg;
 }
 // Epley: peso × (1 + reps/30). En dominadas y fondos se suma el peso del cuerpo.
-const e1rm = (x) => ((equipo(x.ejercicio) === "corporal" ? pesoCorporalActual : 0) + x.peso) * (1 + x.reps / 30);
+// El peso se pasa a kg (máquinas en libras) para que la fuerza no "baje" al cambiar de unidad
+const enKg = (x) => ((x.unidad || "kg") === "lb" ? x.peso * 0.4536 : x.peso);
+const e1rm = (x) => ((equipo(x.ejercicio) === "corporal" ? pesoCorporalActual : 0) + enKg(x)) * (1 + x.reps / 30);
 const redondear = (v, paso) => Math.max(0, Math.round(v / paso) * paso);
 
 // Historial de un ejercicio agrupado por sesión (de la más vieja a la más nueva)
@@ -37,16 +39,28 @@ async function prescribir(e, s) {
   const conv = (x) => (uSerie(x) === u ? x.peso : uSerie(x) === "lb" ? x.peso * 0.4536 : x.peso / 0.4536);
   // peso de trabajo: el que más usaste la última vez (si empatan, el más pesado)
   const cuenta = {};
-  ult.series.forEach((x) => { const p = redondear(conv(x), 0.25); cuenta[p] = (cuenta[p] || 0) + 1; });
+  // si la serie se anotó en otra unidad, se convierte y se redondea al salto real de la máquina
+  const aU = (x) => redondear(conv(x), uSerie(x) === u ? 0.25 : paso);
+  ult.series.forEach((x) => { const p = aU(x); cuenta[p] = (cuenta[p] || 0) + 1; });
   const peso = +Object.keys(cuenta).sort((a, b) => cuenta[b] - cuenta[a] || b - a)[0];
-  const reps = ult.series.filter((x) => redondear(conv(x), 0.25) === peso).map((x) => x.reps);
+  const reps = ult.series.filter((x) => aU(x) === peso).map((x) => x.reps);
   const minR = Math.min(...reps);
-  const conRir = ult.series.filter((x) => x.rir != null);
+  // Bug corregido: solo cuenta lo que respondiste en series hechas con el peso de trabajo
+  // (si en la 1ª serie te sobraban 3 o más y el peso ya subió ese día, no se vuelve a subir por eso)
+  const conRir = ult.series.filter((x) => x.rir != null && aU(x) === peso);
   const rir = conRir.length ? conRir[conRir.length - 1].rir : null; // 0 = nada, 1 = 1-2, 3 = 3 o más
   const uTxt = (v) => fmtPeso(v, u, e);
   let p = peso, objetivoReps, accion, razon;
   const todasMax = reps.every((x) => x >= r.repsMax);
-  if (todasMax || (rir === 3 && minR >= r.repsMax - 2)) {
+  if (equipo(e) === "corporal" && peso === 0) {
+    // Peso del cuerpo sin lastre: se progresa sumando repeticiones, no kilos
+    const maxR = Math.max(...reps);
+    objetivoReps = Math.min(REGLAS.corporalMaxReps, Math.max(r.repsMin, (rir === 0 ? minR : maxR) + 1));
+    accion = "mantener";
+    razon = objetivoReps >= REGLAS.corporalMaxReps
+      ? `Ya llegás a ${REGLAS.corporalMaxReps} repeticiones: si podés, sumá peso (mochila o cinturón con un disco) y anotalo.`
+      : `Peso del cuerpo: buscá ${objetivoReps} repeticiones (la última vez: ${reps.join(", ")}).`;
+  } else if (todasMax || (rir === 3 && minR >= r.repsMax - 2)) {
     p = peso + paso; objetivoReps = r.repsMin; accion = "subir";
     razon = todasMax
       ? `Subimos a ${uTxt(p)}: la última vez hiciste todas las series en ${r.repsMax} o más, el máximo del rango. Volvés a ${r.repsMin} repeticiones y a sumar de nuevo.`
@@ -154,11 +168,11 @@ async function detectarCambio() {
   const ult2 = sesiones.filter((s) => ahora - s.inicio < 14 * D).length / 2;
   const prev = sesiones.filter((s) => ahora - s.inicio >= 14 * D && ahora - s.inicio < 42 * D).length / 4;
   if (prev >= 3 && ult2 < prev * 0.6 && !reciente("frecuencia", 7))
-    return { origen: "frecuencia", titulo: "Estás entrenando menos de lo habitual", texto: `Estas dos semanas: ${Math.round(ult2 * 10) / 10} por semana. Antes: ${Math.round(prev * 10) / 10}. ¿Qué está pasando?` };
+    return { origen: "frecuencia", titulo: "Estás entrenando menos de lo habitual", texto: `Estas dos semanas: ${kg(Math.round(ult2 * 10) / 10)} por semana. Antes: ${kg(Math.round(prev * 10) / 10)}. ¿Qué está pasando?` };
   // 3) Bajó la fuerza en el último entrenamiento
   const ultima = sesiones[0];
   const bajas = [];
-  for (const e of new Set((await DB.porIndice("series", "sesion", ultima.id)).map((x) => x.ejercicio))) {
+  if (!ultima.liviano && !ultima.vuelta) for (const e of new Set((await DB.porIndice("series", "sesion", ultima.id)).map((x) => x.ejercicio))) {
     const hist = await historialDe(e);
     const i = hist.findIndex((h) => h.series[0].sesion === ultima.id);
     if (i < 1) continue;
@@ -180,9 +194,9 @@ async function avisoRecuperacion(dia) {
   const ult = await ultimoTrabajo();
   const H = 3600000, ahora = Date.now();
   const cansados = [...new Set(DIAS[dia].ejercicios.map((e) => EJERCICIOS[e].principal)
-    .filter((m) => (ult.prin[m] || 0) + REGLAS.recuperacion.principalH * H > ahora))];
+    .filter((m) => (ult.prin[m] || 0) + (REGLAS.recuperacion.principalH - REGLAS.recuperacion.margenH) * H > ahora))];
   if (!cansados.length) return "";
-  const mejor = DIAS_RUTINA.filter((d) => d !== dia).map((d) => ({ d, n: DIAS[d].ejercicios.filter((e) => (ult.prin[EJERCICIOS[e].principal] || 0) + 48 * H > ahora).length }))
+  const mejor = DIAS_RUTINA.filter((d) => d !== dia).map((d) => ({ d, n: DIAS[d].ejercicios.filter((e) => (ult.prin[EJERCICIOS[e].principal] || 0) + (REGLAS.recuperacion.principalH - REGLAS.recuperacion.margenH) * H > ahora).length }))
     .sort((a, b) => a.n - b.n)[0];
   return `<div class="tarjeta aviso"><b>Ojo: ${cansados.map((m) => NOMBRES_MUSCULOS[m]).join(", ")} todavía no ${cansados.length > 1 ? "descansaron" : "descansó"} 48 h</b>
     ${mejor && mejor.n === 0 ? `<p class="chico">Hoy te conviene el <b>Día ${mejor.d}</b> (${DIAS[mejor.d].nombre}).</p><button class="sec" data-accion="elegir-dia" data-d="${mejor.d}">Cambiar a Día ${mejor.d}</button>` : `<p class="chico">Si podés, hacé una sesión liviana.</p>`}</div>`;
@@ -222,7 +236,7 @@ async function tarjetaSemana() {
   return `<div class="tarjeta"><b>Series por músculo ${vp ? "por semana (promedio)" : "(últimos 7 días)"}</b>
     <p class="chico suave" style="margin-top:2px">Para ganar músculo: entre ${min} y ${max} por semana. Directas cuentan 1, indirectas ½.</p>
     ${MUSCULOS_SEMANA.map((m) => { const n = v[m], col = n < min ? "var(--rojo)" : n > max ? "var(--naranja)" : "var(--verde)";
-      return `<div class="barra-m"><span>${NOMBRES_MUSCULOS[m]}</span><div class="barra-f"><i style="width:${Math.min(100, (n / max) * 100)}%;background:${col}"></i><em style="left:${(min / max) * 100}%"></em></div><b>${Math.round(n * 10) / 10}</b></div>`; }).join("")}
+      return `<div class="barra-m"><span>${NOMBRES_MUSCULOS[m]}</span><div class="barra-f"><i style="width:${Math.min(100, (n / max) * 100)}%;background:${col}"></i><em style="left:${(min / max) * 100}%"></em></div><b>${kg(Math.round(n * 10) / 10)}</b></div>`; }).join("")}
     ${atras.length ? `<p class="chico mal">Van atrás hace 2 semanas: <b>${atras.map((m) => NOMBRES_MUSCULOS[m]).join(", ")}</b>. Cuando haya que recortar por tiempo, a estos no se les saca.</p>` : ""}
   </div>`;
 }
@@ -510,7 +524,7 @@ async function proponerBalance() {
   return { cambios, nuevo, sesiones: ses.length };
 }
 
-const r1 = (x) => Math.round(x * 10) / 10;
+const r1 = (x) => kg(Math.round(x * 10) / 10);
 function textoCambio(c) {
   const mus = `<b>${NOMBRES_MUSCULOS[c.m]}</b>: ${r1(c.v)} series`;
   if (c.tipo === "suma") return `${mus} (te faltan) → <b>${EJERCICIOS[c.e].nombre}</b>: ${c.a} series en vez de ${c.de} (Día ${c.d})`;

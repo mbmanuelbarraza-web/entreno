@@ -1218,6 +1218,8 @@ REGLAS.volumen = { min: 10, max: 20 };   // series efectivas por músculo por se
 REGLAS.limiteMantenimiento = 55;          // minutos
 REGLAS.limiteCorto = 60;                  // cuando hay poco tiempo por agenda o estrés
 REGLAS.vueltaDias = 10;                   // si pasaron más días sin entrenar, la primera sesión baja 10% el peso
+REGLAS.recuperacion.margenH = 6;          // las 48 h se cuentan desde la última serie: 6 h de margen para que entrenar a la misma hora cada día no dispare el aviso
+REGLAS.corporalMaxReps = 25;              // peso del cuerpo: al llegar acá conviene sumar lastre
 REGLAS.toleranciaMin = 10;                // si el plan completo se pasa del límite hasta 10 min, no se recorta
 const MUSCULOS_SEMANA = ["pecho", "espalda", "hombros", "biceps", "triceps", "cuadriceps", "isquios", "gluteos", "gemelos"];
 

@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 3 · v6";
+const VERSION_APP = "Etapa 3 · v7";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -86,7 +86,8 @@ async function pasoDe(e, u) {
 }
 const uSerie = (x) => x.unidad || "kg";
 // Texto del peso: "50 lb", "12 kg c/u", "60 kg"
-const fmtPeso = (peso, u, e) => kg(peso) + " " + u + (equipo(e) === "mancuernas2" ? " c/u" : "");
+const fmtPeso = (peso, u, e) => equipo(e) === "corporal" ? (peso ? "corporal + " + kg(peso) + " " + u : "peso corporal")
+  : kg(peso) + " " + u + (equipo(e) === "mancuernas2" ? " c/u" : "");
 const fmtSerie = (x) => fmtPeso(x.peso, uSerie(x), x.ejercicio) + " × " + x.reps;
 const fmtCorta = (x) => kg(x.peso) + (uSerie(x) === "lb" ? "lb" : "") + "×" + x.reps;
 // Peso real movido en kg (para el volumen): pasa libras a kg y cuenta las dos mancuernas
@@ -171,7 +172,7 @@ const PANTALLAS = {
       }
       if (agregados.length) planHtml += `<p class="chico" style="margin-top:8px">➕ Sumé ${agregados.length > 1 ? "pendientes que ya descansaron" : "un pendiente que ya descansó"}: <b>${agregados.map((a) => EJERCICIOS[a.e].nombre).join(", ")}</b>. Total ≈ <b>${durTxt(agregados[agregados.length - 1].t)}</b>, dentro de tu límite.</p>
         <button class="sec chico" data-accion="sin-pendientes-hoy" style="margin:2px 0 6px">No agregar hoy</button>`;
-      planHtml += `<p class="chico suave">Calculado con tu ritmo real: ${Math.round(plan.rit.compuesto)} s por serie pesada y ${Math.round(plan.rit.aislamiento)} s por serie de aislamiento (además del descanso), ${Math.round(plan.rit.cambio / 60 * 10) / 10} min por cambio de ejercicio.</p>`;
+      planHtml += `<p class="chico suave">Calculado con tu ritmo real: ${Math.round(plan.rit.compuesto)} s por serie pesada y ${Math.round(plan.rit.aislamiento)} s por serie de aislamiento (además del descanso), ${kg(Math.round(plan.rit.cambio / 60 * 10) / 10)} min por cambio de ejercicio.</p>`;
     }
 
     app.innerHTML = `
@@ -303,7 +304,7 @@ const PANTALLAS = {
       </div>` : `
       ${pres ? `<div class="tarjeta receta">
         <p class="chico suave" style="margin:0">Tu entrenador indica para hoy</p>
-        <div class="receta-num">${fmtPeso(pres.peso, pres.unidad, e)} × ${pres.reps}</div>
+        <div class="receta-num">${equipo(e) === "corporal" && !pres.peso ? "Peso corporal" : fmtPeso(pres.peso, pres.unidad, e)} × ${pres.reps}</div>
         <p class="chico">${pres.razon}</p>${pres.nota ? `<p class="chico mal">${pres.nota}</p>` : ""}
       </div>` : ""}
       <div class="tarjeta">
@@ -416,7 +417,7 @@ const PANTALLAS = {
     const lista = Object.entries(porSesion).map(([id, xs]) => ({
       fecha: (sesiones.find((s) => s.id === id) || {}).inicio || xs[0].hora,
       series: xs.sort((a, b) => a.n - b.n),
-      max: Math.max(...xs.map((x) => x.peso)),
+      max: Math.max(...xs.map((x) => ((x.unidad || "kg") === "lb" ? Math.round(x.peso * 0.4536 * 10) / 10 : x.peso))),
     })).sort((a, b) => a.fecha - b.fecha);
     app.innerHTML = `
       <button class="volver" data-accion="hist-volver">← Historial</button>
@@ -447,7 +448,7 @@ const PANTALLAS = {
       <div class="tarjeta"><b>Evolución</b>${grafico(pesos.map((p) => ({ x: p.fecha, y: p.kg })), "kg")}</div>
       <div class="tarjeta">${pesos.slice().reverse().map((p) => `
         <div class="serie"><span>${fecha(p.fecha)}</span><span><b>${kg(p.kg)} kg</b>
-        <button data-accion="borrar-peso" data-id="${p.id}" aria-label="Borrar">×</button></span></div>`).join("") || `<p class="suave">Sin registros.</p>`}</div>`;
+        <button data-accion="borrar-peso" data-id="${p.id}" data-confirmar="1" aria-label="Borrar">×</button></span></div>`).join("") || `<p class="suave">Sin registros.</p>`}</div>`;
   },
 
   // ---------- Respaldo ----------
@@ -562,7 +563,8 @@ const ACCIONES = {
     const anterior = (await ajuste("perfil")) || {};
     await guardarAjuste("perfil", { ...anterior, nacimiento: nac, altura: alt || 1.64 });
     if (pesoEl && parseFloat(pesoEl.value)) {
-      await DB.put("pesoCorporal", { id: nuevoId(), fecha: Date.parse("2026-09-14T08:00:00"), kg: parseFloat(pesoEl.value), nota: "bioimpedancia" });
+      await DB.put("pesoCorporal", { id: nuevoId(), fecha: Date.now(), kg: parseFloat(pesoEl.value) });
+      await cargarPesoCorporal();
     }
     mostrar(anterior.nacimiento ? "ajustes" : "inicio");
   },
@@ -594,7 +596,7 @@ const ACCIONES = {
       checkin: E.chk && Object.keys(E.chk).length ? { ...E.chk } : null, liviano: !!liviano, vuelta: diasSin > REGLAS.vueltaDias ? diasSin : 0 };
     await DB.put("sesiones", s);
     // los pendientes de este mismo día se hacen hoy: ya no hacen falta
-    await guardarPendientes((await leerPendientes()).filter((p) => !s.ejercicios.includes(p.e)));
+    // los pendientes de hoy se borran recién al terminar (si descartás el entrenamiento, se conservan)
     E.diaElegido = null;
     await fijarLimiteActivo(s); programarAvisos([]);
     activarPantalla();
@@ -750,7 +752,7 @@ const ACCIONES = {
     if (!s.saltados.includes(E.ejercicio)) s.saltados.push(E.ejercicio);
     await DB.put("sesiones", s);
     const sig = s.ejercicios.slice(s.ejercicios.indexOf(E.ejercicio) + 1)[0];
-    sig ? mostrar("ejercicio", { ejercicio: sig, valoresListos: false }) : mostrar("sesion");
+    sig ? mostrar("ejercicio", { ejercicio: sig, valoresListos: false, manual: false }) : mostrar("sesion");
   },
   async terminar() {
     if (!E.confirmarFin) { E.confirmarFin = true; $("#b-terminar").textContent = "Tocá de nuevo para confirmar"; return; }
@@ -871,9 +873,10 @@ const ACCIONES = {
   async "guardar-peso"() {
     if (!leerPesoEscrito()) return toast("Escribí un peso válido, por ejemplo 64,5");
     await DB.put("pesoCorporal", { id: nuevoId(), fecha: Date.now(), kg: E.pesoCorp });
+    await cargarPesoCorporal();
     toast("Peso guardado"); PANTALLAS.peso();
   },
-  async "borrar-peso"(d) { await DB.borrar("pesoCorporal", d.id); PANTALLAS.peso(); },
+  async "borrar-peso"(d) { await DB.borrar("pesoCorporal", d.id); await cargarPesoCorporal(); PANTALLAS.peso(); },
 
   exportar: () => exportarRespaldo(),
   "elegir-archivo": () => $("#archivo").click(),
@@ -944,7 +947,7 @@ async function importarRespaldo(archivo) {
     for (const [k, v] of Object.entries(datos.ajustes || {})) await guardarAjuste(k, v);
     for (const s of ["sesiones", "series", "pesoCorporal"]) for (const x of datos[s] || []) await DB.put(s, x);
     toast("Datos restaurados (" + (datos.sesiones || []).length + " entrenamientos)");
-    await aplicarBalance();
+    await aplicarBalance(); await cargarPesoCorporal();
     mostrar("inicio");
   } catch (e) { toast("Error: " + e.message); }
 }
@@ -970,9 +973,14 @@ function empezarDescanso(segundos, texto, op = {}) {
   $("#d-ver-lista").dataset.v = D.esCal ? "calentamiento" : "lista";
   $("#d-ver-lista").parentElement.className = D.esCal ? "" : "fila2";
   $("[data-accion=descanso-saltear]").textContent = op.titulo ? "Terminar" : "Saltear descanso";
-  guardarAjuste("descanso", { fin: D.fin, texto });
+  D.rir = op.rir || null; D.ultima = !!op.ultima;
   $("#descanso").hidden = false; $("#d-prox").textContent = texto;
   reprogramarDescanso();
+}
+// Todo lo necesario para retomar el descanso si la app se recarga
+function estadoDescanso() {
+  return { fin: D.fin, texto: D.texto, aviso: D.aviso, titulo: D.titulo, esCal: D.esCal, rir: D.rir, ultima: D.ultima,
+    ejercicio: E.ejercicio, ultimaSerieId: E.ultimaSerieId, rirModo: E.rirModo, rirEj: E.rirEj, rirBase: E.rirBase, rirUnidad: E.rirUnidad };
 }
 function avisosDescanso() {
   const falta = Math.round((D.fin - Date.now()) / 1000);
@@ -982,7 +990,7 @@ function avisosDescanso() {
   return a;
 }
 function reprogramarDescanso() {
-  guardarAjuste("descanso", { fin: D.fin, texto: D.texto });
+  guardarAjuste("descanso", estadoDescanso());
   const falta = Math.round((D.fin - Date.now()) / 1000);
   const avisos = [{ enSegundos: falta, titulo: D.aviso || "¡A entrenar!", texto: D.texto, etiqueta: "fin" }];
   if (falta > REGLAS.avisoPrevio) avisos.unshift({ enSegundos: falta - REGLAS.avisoPrevio, titulo: "Quedan 10 segundos", texto: D.texto, etiqueta: "previo" });
@@ -1009,9 +1017,19 @@ function cancelarDescanso() {
 // Si la app se cerró durante un descanso, lo retoma
 async function retomarDescanso() {
   const d = await ajuste("descanso");
-  if (d && d.fin > Date.now()) { D.fin = d.fin; D.texto = d.texto; $("#descanso").hidden = false; $("#d-prox").textContent = d.texto;
-    clearInterval(D.timer); D.timer = setInterval(() => { const f = (D.fin - Date.now()) / 1000; $("#d-reloj").textContent = mmss(f); $("#mini-reloj").textContent = mmss(f);
-      if (f <= 0) { clearInterval(D.timer); $("#descanso").hidden = true; ocultarMini(); guardarAjuste("descanso", null); } }, 250); }
+  if (!d || !(d.fin > Date.now())) return;
+  Object.assign(D, { fin: d.fin, texto: d.texto, aviso: d.aviso, titulo: d.titulo || "Descanso", esCal: !!d.esCal, rir: d.rir || null, ultima: !!d.ultima, alTerminar: null });
+  // recupera en qué ejercicio estabas (para "Ver próximo ejercicio" y la pregunta de repeticiones)
+  for (const k of ["ultimaSerieId", "rirModo", "rirEj", "rirBase", "rirUnidad"]) if (d[k] != null) E[k] = d[k];
+  if (d.ejercicio && EJERCICIOS[d.ejercicio]) { E.ejercicio = d.ejercicio; E.valoresListos = false; }
+  $(".d-titulo").textContent = D.titulo;
+  $("#d-prox").classList.toggle("ultima", D.ultima);
+  $("#d-rir").hidden = !D.rir;
+  $("#d-rir-ok").textContent = D.rir === "primera" ? "Si te sobran 3 o más, subimos el peso ya para las series que quedan" : "Con esto elijo el peso de la próxima vez";
+  $("#d-ver-ej").hidden = D.esCal || !E.ejercicio;
+  $("[data-accion=descanso-saltear]").textContent = D.esCal ? "Terminar" : "Saltear descanso";
+  $("#descanso").hidden = false; $("#d-prox").textContent = D.texto;
+  reprogramarDescanso();
 }
 
 // Pitido (se mezcla con Spotify)
@@ -1310,7 +1328,7 @@ async function moverAPendientes(s, ejercicios) {
   if (!ejercicios.length) return;
   const lista = await leerPendientes();
   for (const e of ejercicios) if (!lista.some((p) => p.e === e))
-    lista.push({ id: nuevoId(), e, series: reglas(e).series, dia: s.tipo === "pendientes" ? (lista.find((p) => p.e === e) || {}).dia || s.dia : s.dia, desde: Date.now() });
+    lista.push({ id: nuevoId(), e, series: objetivo(s, e) || seriesDe(s.dia, e), dia: s.tipo === "pendientes" ? (lista.find((p) => p.e === e) || {}).dia || s.dia : s.dia, desde: Date.now() });
   await guardarPendientes(lista);
 }
 
