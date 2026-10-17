@@ -600,9 +600,56 @@ async function subirPesoHoy(subir) {
   if (subir) $("#d-rir-ok").innerHTML = `<b class="ok">Subí a ${fmtPeso(nuevo, u, e)} para las series que quedan.</b>`;
 }
 // Última serie del día: no hay descanso, así que la pregunta aparece en una ventana
-function hojaRirFinal() {
-  hoja(`<p style="margin:0 0 8px"><b>Última serie del día: ¿cuántas repeticiones más podías hacer?</b></p>
+function hojaRirFinal(record) {
+  hoja(`${record ? `<div id="h-record"><span class="trofeo">🏆</span><div><b>¡Récord personal!</b><br>${textoRecord(record)}</div></div>` : ""}<p style="margin:0 0 8px"><b>Última serie del día: ¿cuántas repeticiones más podías hacer?</b></p>
     <div class="fila3"><button class="sec" data-accion="rir-hoja" data-v="0">Ninguna</button><button class="sec" data-accion="rir-hoja" data-v="1">1 o 2</button><button class="sec" data-accion="rir-hoja" data-v="3">3 o más</button></div>
     <p class="chico suave">Con esto elijo el peso de la próxima vez.</p>
     <button class="sec" data-accion="rir-hoja-saltear">Saltear</button>`);
+}
+
+// =====================================================================
+// RÉCORDS PERSONALES (idea de Caliber/Strong)
+// Al terminar un ejercicio se compara con todo tu historial anterior:
+// - "peso": el peso más alto que moviste (en kg, sin importar si la máquina marca libras)
+// - "fuerza": la fuerza estimada (Epley) más alta, que combina peso y repeticiones
+// La primera vez que hacés un ejercicio no cuenta como récord (no hay con qué comparar).
+// =====================================================================
+async function recordsDeSesion(s, soloEj) {
+  const todas = await DB.todos("series");
+  const deHoy = todas.filter((x) => x.sesion === s.id && (!soloEj || x.ejercicio === soloEj));
+  const out = [];
+  for (const e of new Set(deHoy.map((x) => x.ejercicio))) {
+    if (!EJERCICIOS[e] || EJERCICIOS[e].tipo === "calentamiento") continue;
+    const antes = todas.filter((x) => x.ejercicio === e && x.sesion !== s.id && x.hora < s.inicio);
+    if (!antes.length) continue;
+    const hoy = deHoy.filter((x) => x.ejercicio === e);
+    const maxPeso = (xs) => Math.max(...xs.map(enKg)), maxFza = (xs) => Math.max(...xs.map(e1rm));
+    const corporalSinLastre = equipo(e) === "corporal" && maxPeso(hoy) === 0 && maxPeso(antes) === 0;
+    if (!corporalSinLastre && maxPeso(hoy) > maxPeso(antes) + 0.01) out.push({ e, tipo: "peso", antes: maxPeso(antes), ahora: maxPeso(hoy) });
+    else if (maxFza(hoy) > maxFza(antes) * 1.005) out.push({ e, tipo: "fuerza", antes: maxFza(antes), ahora: maxFza(hoy) });
+  }
+  return out;
+}
+function textoRecord(r) {
+  const n = EJERCICIOS[r.e].nombre;
+  return r.tipo === "peso"
+    ? `${n}: tu peso más alto, ${kg(Math.round(r.ahora * 10) / 10)} kg (antes ${kg(Math.round(r.antes * 10) / 10)})`
+    : `${n}: tu mejor fuerza estimada, ${kg(Math.round(r.ahora))} kg (antes ${kg(Math.round(r.antes))})`;
+}
+async function recordsSemana() {
+  const ini = inicioSemana(Date.now());
+  let n = 0;
+  for (const s of (await DB.todos("sesiones")).filter((x) => x.fin && x.inicio >= ini)) n += (await recordsDeSesion(s)).length;
+  return n;
+}
+// Lunes 00:00 de la semana actual
+function inicioSemana(ts) { const d = new Date(ts); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.getTime(); }
+// Al terminar la última serie de un ejercicio: ¿hubo récord? Se muestra en el descanso (o en la ventana final)
+async function avisarRecord(e) {
+  const s = await DB.get("sesiones", E.sesion); if (!s) return;
+  const r = (await recordsDeSesion(s, e))[0];
+  const el = $("#d-record");
+  if (!r) { if (el) el.hidden = true; return null; }
+  if (el && !$("#descanso").hidden) { $("#d-record-txt").textContent = textoRecord(r); el.hidden = false; }
+  return r;
 }

@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 3 · v7";
+const VERSION_APP = "Etapa 4 · v1";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -159,6 +159,8 @@ const PANTALLAS = {
     const pend = activa ? [] : await pendientesConEstado();
     const agregados = activa ? [] : await agregablesHoy(dia, plan, limiteHoy);
     const pendListos = pend.filter((p) => p.listo <= Date.now() && !DIAS[dia].ejercicios.includes(p.e) && !agregados.some((a) => a.e === p.e));
+    const hechasSemana = terminadas.filter((s) => s.inicio >= inicioSemana(Date.now())).length;
+    const recSemana = activa ? 0 : await recordsSemana();
     let planHtml = "";
     if (plan) {
       if (plan.entra) planHtml = `<p class="ok"><b>Estimado ≈ ${durTxt(plan.completo)}</b> · entra en tu límite de ${durTxt(limiteHoy * 60)}</p>`;
@@ -176,8 +178,8 @@ const PANTALLAS = {
     }
 
     app.innerHTML = `
-      <div class="cabecera"><span class="suave chico">${fechaLarga(Date.now())}</span>
-        <button class="chico sec" data-accion="ir" data-p="ajustes">Ajustes</button></div>
+      <div class="cabecera"><span class="fecha-top">${fechaLarga(Date.now()).replace(/^./, (c) => c.toUpperCase())}</span>
+        <button class="chico sec icono" data-accion="ir" data-p="ajustes" aria-label="Ajustes">⚙︎</button></div>
       ${notif !== "activas" ? `<div class="tarjeta aviso"><b>Activá las notificaciones</b><p class="chico suave">Para que te avise al terminar cada descanso.</p>
         <button data-accion="activar-notif">Activar notificaciones</button></div>` : ""}
       ${sinRespaldo ? `<div class="tarjeta aviso"><b>Hace más de una semana que no guardás un respaldo</b>
@@ -187,17 +189,28 @@ const PANTALLAS = {
           <p>${tituloSesion(activa)} · ${nombreSesion(activa)}<br><span class="suave chico">Empezaste a las ${hora(activa.inicio)}</span></p>
           <button class="grande" data-accion="seguir">Seguir entrenando</button></div>` : `
         ${extras}
-        <h1>Hoy toca ${textoDia(dia)}</h1>
-        <p class="suave" style="margin-top:0">${DIAS[dia].nombre}${dia !== sugerido ? " (elegido a mano)" : ""}</p>
-        ${opcionesDia.length > 1 ? `<div class="fila${opcionesDia.length} dias">${opcionesDia.map((d) => `<button class="sec ${d === dia ? "activo" : ""}" data-accion="elegir-dia" data-d="${d}">${textoDia(d)}</button>`).join("")}</div>` : ""}
-        <div class="tarjeta" style="margin-top:12px">
-          ${DIAS[dia].ejercicios.map((e) => `<div class="chico">· ${EJERCICIOS[e].nombre} <span class="suave">${!plan.tolerable && plan.pendientes.includes(e) ? "otro día" : `${plan.tolerable ? seriesDe(dia, e) : plan.objetivos[e] || 0}×${reglas(e).repsMin}-${reglas(e).repsMax}`}${plan.prioridad.includes(EJERCICIOS[e].principal) ? " · prioridad" : ""}</span></div>`).join("")}
+        <section class="hero">
+          <div class="eyebrow">Hoy · ${textoDia(dia)}${dia !== sugerido ? " · elegido a mano" : ""}</div>
+          <h1 class="hero-tit">${DIAS[dia].nombre}</h1>
+          <div class="pills">
+            <span class="pill">≈ ${durTxt(agregados.length ? agregados[agregados.length - 1].t : plan.tolerable ? plan.completo : plan.ajustado)}</span>
+            <span class="pill">${DIAS[dia].ejercicios.length + agregados.length} ejercicios</span>
+            ${!plan.tolerable ? `<span class="pill pill-aviso">plan ajustado</span>` : ""}
+            ${agregados.length ? `<span class="pill pill-ok">+${agregados.length} pendiente${agregados.length > 1 ? "s" : ""}</span>` : ""}
+          </div>
+          <div class="semana-bar"><div class="semana-txt"><span>Esta semana</span><b>${hechasSemana} de ${REGLAS.metaSemanal}</b></div>
+            <div class="barra-f"><i style="width:${Math.min(100, (hechasSemana / REGLAS.metaSemanal) * 100)}%;background:var(--naranja)"></i></div></div>
+          ${plan.tolerable ? `<button class="grande" data-accion="empezar" data-d="${dia}" data-modo="completo">Empezar</button>` : `
+            <button class="grande" data-accion="empezar" data-d="${dia}" data-modo="ajustado">Empezar · plan ajustado</button>
+            <button class="sec" data-accion="empezar" data-d="${dia}" data-modo="completo">Hacer todo (≈ ${durTxt(plan.completo)})</button>`}
+          ${recSemana ? `<p class="hero-rec">🏆 ${recSemana} récord${recSemana > 1 ? "s" : ""} esta semana</p>` : ""}
+        </section>
+        ${opcionesDia.length > 1 ? `<div class="segmentos">${opcionesDia.map((d) => `<button class="${d === dia ? "activo" : ""}" data-accion="elegir-dia" data-d="${d}">${textoDia(d)}</button>`).join("")}</div>` : ""}
+        <details class="tarjeta plegable" open><summary>Ejercicios de hoy</summary>
+          ${DIAS[dia].ejercicios.map((e) => `<div class="chico fila-ej">· ${EJERCICIOS[e].nombre} <span class="suave">${!plan.tolerable && plan.pendientes.includes(e) ? "otro día" : `${plan.tolerable ? seriesDe(dia, e) : plan.objetivos[e] || 0}×${reglas(e).repsMin}-${reglas(e).repsMax}`}${plan.prioridad.includes(EJERCICIOS[e].principal) ? " · prioridad" : ""}</span></div>`).join("")}
           ${agregados.map((a) => `<div class="chico">· ${EJERCICIOS[a.e].nombre} <span class="suave">${a.series}×${reglas(a.e).repsMin}-${reglas(a.e).repsMax} · <span class="ok">pendiente sumado</span></span></div>`).join("")}
-        </div>
-        <div class="tarjeta">${planHtml}</div>
-        ${plan.tolerable ? `<button class="grande" data-accion="empezar" data-d="${dia}" data-modo="completo">Empezar</button>` : `
-          <button class="grande" data-accion="empezar" data-d="${dia}" data-modo="ajustado">Empezar (plan ajustado)</button>
-          <button class="sec" data-accion="empezar" data-d="${dia}" data-modo="completo">Hacer todo (≈ ${durTxt(plan.completo)})</button>`}
+        </details>
+        <details class="tarjeta plegable" ${!plan.tolerable || agregados.length ? "open" : ""}><summary>Tiempo estimado</summary>${planHtml}</details>
         ${pend.length ? `<div class="tarjeta" style="margin-top:12px"><b>Pendientes de otros días</b>
           ${pend.map((p) => `<div class="serie"><span>${EJERCICIOS[p.e].nombre}<br>${cuandoTxt(p.listo)}</span>
             <button data-accion="quitar-pendiente" data-id="${p.id}" data-confirmar="1" aria-label="Quitar">×</button></div>`).join("")}
@@ -373,21 +386,35 @@ const PANTALLAS = {
   // ---------- Resumen al terminar ----------
   async resumen() {
     const s = await DB.get("sesiones", E.sesion);
-    const series = await DB.porIndice("series", "sesion", s.id);
+    const series = (await DB.porIndice("series", "sesion", s.id)).filter((x) => EJERCICIOS[x.ejercicio] && EJERCICIOS[x.ejercicio].tipo !== "calentamiento");
     const vol = series.reduce((t, x) => t + pesoKg(x) * x.reps, 0);
     const ejs = new Set(series.map((x) => x.ejercicio)).size;
+    const recs = await recordsDeSesion(s);
+    const lim = (s.limite || REGLAS.limiteMin);
+    const pasado = s.fin - s.inicio > lim * 60000;
+    // series directas por músculo trabajado hoy
+    const mus = {};
+    series.forEach((x) => { const m = EJERCICIOS[x.ejercicio].principal; mus[m] = (mus[m] || 0) + 1; });
+    const fmtMiles = (n) => Math.round(n).toLocaleString("es-AR");
     app.innerHTML = `
-      <h1>¡Entrenamiento terminado!</h1>
-      <p class="suave">${tituloSesion(s)} · ${nombreSesion(s)}</p>
-      <div class="tarjeta">
-        <p>Duración: <b class="${s.fin - s.inicio > (s.limite || REGLAS.limiteMin) * 60000 ? "mal" : "ok"}">${hhmm(s.fin - s.inicio)}</b> <span class="suave chico">(límite ${durTxt((s.limite || REGLAS.limiteMin) * 60)}${s.limite > (s.limiteOriginal || REGLAS.limiteMin) ? `, sumaste ${s.limite - s.limiteOriginal} min` : ""})</span></p>
-        ${(s.quedaronPendientes || []).length ? `<p>Quedan pendientes para otro día: <b>${s.quedaronPendientes.map((e) => EJERCICIOS[e].nombre).join(", ")}</b></p>` : ""}
-        ${(s.quedaronPendientes || []).length && s.fin - s.inicio < ((s.limite || REGLAS.limiteMin) - 10) * 60000 ? `<div class="tarjeta aviso" style="margin-top:10px"><b>Terminaste antes de lo previsto</b><p class="chico">¿Por qué? Me ayuda a adaptar lo que viene.</p>${botonesMotivo("corte")}
+      <section class="hero hero-fin">
+        <div class="eyebrow">${tituloSesion(s)} · ${nombreSesion(s)}</div>
+        <h1 class="hero-tit">¡Entrenamiento terminado!</h1>
+        <div class="stats">
+          <div><b class="${pasado ? "mal" : ""}">${hhmm(s.fin - s.inicio)}</b><span>duración</span></div>
+          <div><b>${series.length}</b><span>series</span></div>
+          <div><b>${fmtMiles(vol)}</b><span>kg movidos</span></div>
+        </div>
+        <p class="chico suave" style="margin:8px 0 0">Límite ${durTxt(lim * 60)}${s.limite > (s.limiteOriginal || REGLAS.limiteMin) ? ` (sumaste ${s.limite - s.limiteOriginal} min)` : ""} · ${ejs} ejercicio${ejs === 1 ? "" : "s"}</p>
+      </section>
+      ${recs.length ? `<div class="tarjeta tarjeta-rec"><b>🏆 ${recs.length > 1 ? `${recs.length} récords personales` : "Récord personal"}</b>
+        ${recs.map((r) => `<p class="chico" style="margin:6px 0 0">${textoRecord(r)}</p>`).join("")}</div>` : ""}
+      ${Object.keys(mus).length ? `<div class="tarjeta"><b>Músculos trabajados</b><div class="pills" style="margin-top:8px">
+        ${Object.entries(mus).sort((x, y) => y[1] - x[1]).map(([m, n]) => `<span class="pill">${NOMBRES_MUSCULOS[m] || m} · ${n}</span>`).join("")}</div></div>` : ""}
+      ${(s.quedaronPendientes || []).length ? `<div class="tarjeta"><b>Quedan para otro día</b><p class="chico" style="margin:6px 0 0">${s.quedaronPendientes.map((e) => EJERCICIOS[e].nombre).join(", ")}</p></div>` : ""}
+      ${(s.quedaronPendientes || []).length && s.fin - s.inicio < (lim - 10) * 60000 ? `<div class="tarjeta aviso"><b>Terminaste antes de lo previsto</b><p class="chico">¿Por qué? Me ayuda a adaptar lo que viene.</p>${botonesMotivo("corte")}
           <button class="sec chico" data-accion="motivo" data-m="ok" data-o="corte" style="margin-top:8px">Fue algo puntual</button></div>` : ""}
-        ${s.calInicio && s.calFin ? `<p>Entrada en calor: <b>${mmss((s.calFin - s.calInicio) / 1000)}</b> <span class="suave chico">(previsto ≈ ${Math.round(CALENTAMIENTO[s.dia].reduce((t, x) => t + x.seg, 0) / 60)} min)</span></p>` : ""}
-        <p>Ejercicios: <b>${ejs}</b> · Series: <b>${series.length}</b></p>
-        <p>Volumen total: <b>${kg(Math.round(vol))} kg</b> <span class="suave chico">(peso real × repeticiones, en kg)</span></p>
-      </div>
+      ${s.calInicio && s.calFin ? `<p class="chico suave">Entrada en calor: ${mmss((s.calFin - s.calInicio) / 1000)} (previsto ≈ ${Math.round(CALENTAMIENTO[s.dia].reduce((t, x) => t + x.seg, 0) / 60)} min)</p>` : ""}
       <button class="grande" data-accion="ir" data-p="inicio">Volver al inicio</button>`;
   },
 
@@ -736,7 +763,8 @@ const ACCIONES = {
     const rirModo = n >= r.series ? "ultima" : n === 1 ? "primera" : null;
     E.rirModo = rirModo; E.rirEj = e; E.rirBase = E.peso; E.rirUnidad = unidad;
     if (n < r.series || siguienteEj) empezarDescanso(r.descanso, prox, { ...(ultima ? { aviso: "¡Última serie de este ejercicio!", ultima: true } : {}), rir: rirModo });
-    else { toast("¡Terminaste todos los ejercicios! Tocá «Terminar entrenamiento»."); hojaRirFinal(); }
+    else { toast("¡Terminaste todos los ejercicios! Tocá «Terminar entrenamiento»."); hojaRirFinal(await recordsDeSesion(s, e).then((x) => x[0])); }
+    if (n === r.series && siguienteEj) avisarRecord(e); // última serie del ejercicio: ¿récord?
     E.proyCache = 0; revisarTiempo("serie");
   },
   async "borrar-serie"(d) {
@@ -966,6 +994,7 @@ function empezarDescanso(segundos, texto, op = {}) {
   $(".d-titulo").textContent = D.titulo;
   $("#d-prox").classList.toggle("ultima", !!op.ultima);
   $("#d-rir").hidden = !op.rir;
+  $("#d-record").hidden = true;
   document.querySelectorAll("#d-rir button").forEach((b) => b.classList.add("sec"));
   $("#d-rir-ok").textContent = op.rir === "primera" ? "Si te sobran 3 o más, subimos el peso ya para las series que quedan" : "Con esto elijo el peso de la próxima vez";
   $("#d-ver-ej").hidden = D.esCal;

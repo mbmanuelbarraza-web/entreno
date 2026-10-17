@@ -1220,6 +1220,7 @@ REGLAS.limiteCorto = 60;                  // cuando hay poco tiempo por agenda o
 REGLAS.vueltaDias = 10;                   // si pasaron más días sin entrenar, la primera sesión baja 10% el peso
 REGLAS.recuperacion.margenH = 6;          // las 48 h se cuentan desde la última serie: 6 h de margen para que entrenar a la misma hora cada día no dispare el aviso
 REGLAS.corporalMaxReps = 25;              // peso del cuerpo: al llegar acá conviene sumar lastre
+REGLAS.metaSemanal = 6;                   // entrenamientos por semana (barra de progreso del inicio)
 REGLAS.toleranciaMin = 10;                // si el plan completo se pasa del límite hasta 10 min, no se recorta
 const MUSCULOS_SEMANA = ["pecho", "espalda", "hombros", "biceps", "triceps", "cuadriceps", "isquios", "gluteos", "gemelos"];
 
