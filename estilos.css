@@ -204,3 +204,5 @@ details.plegable[open] > summary { margin-bottom:8px; }
 .discos b { color:var(--naranja2); font-variant-numeric:tabular-nums; }
 .aprox { margin-top:10px; padding:10px 12px; border-radius:12px; background:rgba(255,255,255,.05); font-size:15px; line-height:1.5; }
 .receta button.chico { width:100%; margin-top:8px; }
+.tarjeta.terminado { border:1.5px solid rgba(48,211,127,.55); background:linear-gradient(180deg, rgba(48,211,127,.10), rgba(48,211,127,.02)), var(--tarjeta); }
+.tarjeta.terminado h2 { color:var(--verde); }

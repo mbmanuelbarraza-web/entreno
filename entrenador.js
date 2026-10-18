@@ -72,7 +72,8 @@ async function prescribir(e, s) {
     razon = todasMax
       ? `Subimos a ${uTxt(p)}: la última vez hiciste todas las series en ${r.repsMax} o más, el máximo del rango. Volvés a ${r.repsMin} repeticiones y a sumar de nuevo.`
       : `Subimos a ${uTxt(p)}: la última vez te sobraban 3 o más repeticiones.`;
-  } else if (minR < r.repsMin - 1 && rir === 0 && peso - paso >= 0) {
+  } else if (reps.filter((x) => x < r.repsMin - 1).length >= Math.ceil(reps.length / 2) && rir === 0 && peso - paso >= 0) {
+    // solo baja si la mayoría de las series quedaron cortas: una serie mala no alcanza (idea de JEFIT)
     p = peso - paso; objetivoReps = r.repsMin; accion = "bajar";
     razon = `Bajamos a ${uTxt(p)}: la última vez no llegaste al mínimo (${r.repsMin}) y quedaste sin margen.`;
   } else {
@@ -722,3 +723,26 @@ Object.assign(ACCIONES, {
     toast("Ok, lo vuelvo a mirar en una semana"); mostrar("inicio");
   },
 });
+
+// ---------- Dónde ver los récords ----------
+// Historial: los récords de los últimos 30 días
+async function tarjetaRecordsRecientes() {
+  const D = 86400000, ahora = Date.now();
+  const ses = (await DB.todos("sesiones")).filter((s) => s.fin && ahora - s.inicio < 30 * D).sort((a, b) => b.inicio - a.inicio);
+  const recs = [];
+  for (const s of ses) for (const r of await recordsDeSesion(s)) recs.push({ ...r, fecha: s.inicio });
+  if (!recs.length) return `<div class="tarjeta"><b>🏆 Récords</b><p class="chico suave" style="margin:6px 0 0">Todavía no hay récords en los últimos 30 días. Aparecen cuando superás tu mejor peso o tu mejor fuerza estimada en un ejercicio.</p></div>`;
+  return `<div class="tarjeta tarjeta-rec"><b>🏆 Récords de los últimos 30 días (${recs.length})</b>
+    ${recs.slice(0, 12).map((r) => `<p class="chico" style="margin:6px 0 0"><span class="suave">${fecha(r.fecha)}</span> · ${textoRecord(r)}</p>`).join("")}</div>`;
+}
+// Historial de un ejercicio: mejor peso y mejor fuerza estimada, con fecha
+function mejoresMarcasHtml(series, lista) {
+  const xs = series.filter((x) => x.reps > 0);
+  if (!xs.length) return "";
+  const fechaDe = (x) => { const l = lista.find((y) => y.series.includes(x)); return l ? l.fecha : x.hora; };
+  const mp = xs.reduce((a, b) => (enKg(b) > enKg(a) ? b : a));
+  const mf = xs.reduce((a, b) => (e1rm(b) > e1rm(a) ? b : a));
+  return `<div class="tarjeta tarjeta-rec"><b>🏆 Tus mejores marcas</b>
+    <p class="chico" style="margin:6px 0 0">Peso más alto: <b>${fmtSerie(mp)}</b> <span class="suave">(${fecha(fechaDe(mp))})</span></p>
+    <p class="chico" style="margin:4px 0 0">Mejor fuerza estimada: <b>${kg(Math.round(e1rm(mf)))} kg</b> con ${fmtSerie(mf)} <span class="suave">(${fecha(fechaDe(mf))})</span></p></div>`;
+}

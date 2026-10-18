@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 4 · v3";
+const VERSION_APP = "Etapa 4 · v4";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -117,6 +117,7 @@ const E = { pantalla: "inicio", sesion: null, ejercicio: null, peso: 0, reps: 0,
 // 3. PANTALLAS
 // =====================================================================
 async function mostrar(pantalla, extra) {
+  if (extra && extra.ejercicio && extra.ejercicio !== E.ejercicio) E.extra = false;
   E.pantalla = pantalla; Object.assign(E, extra || {});
   E.confirmarFin = false;
   await PANTALLAS[pantalla]();
@@ -282,6 +283,11 @@ const PANTALLAS = {
     // si en la 1ª serie de hoy te sobraban 3 o más, el peso de las series que quedan ya subió
     if (pres && (s.repetir || {})[e]) { pres.peso = pres.anterior.peso; pres.reps = pres.anterior.reps; pres.accion = "repetir"; pres.razon = "Elegiste repetir lo de la última vez. Si hoy sale cómodo, la próxima subimos."; }
     if (pres && s.subeHoy && s.subeHoy[e] != null) { pres.peso = s.subeHoy[e]; pres.razon = "Subimos el peso: en la primera serie te sobraban 3 o más repeticiones."; }
+    else if (pres && hoy.length) {
+      // ya hiciste series hoy: la indicación sigue con el peso que estás usando de verdad
+      const ultHoy = hoy[hoy.length - 1];
+      if (uSerie(ultHoy) === pres.unidad && ultHoy.peso !== pres.peso) { pres.peso = ultHoy.peso; pres.razon = "Seguí con el peso que estás usando hoy."; }
+    }
     E.pres = pres;
     if (!E.valoresListos && pres) { E.peso = pres.peso; E.reps = pres.reps; E.valoresListos = true; }
     // Valores iniciales: lo de la última vez (misma serie), o la serie anterior de hoy
@@ -317,6 +323,11 @@ const PANTALLAS = {
         <p class="chico suave">Se pregunta una sola vez por máquina. Si los números de la pila van 10, 30, 50… o es de marca Cybex, Life Fitness o Hammer Strength, casi siempre son libras.</p>
         <div class="fila2"><button data-accion="set-unidad" data-u="kg">Kilos</button><button data-accion="set-unidad" data-u="lb">Libras</button></div>
       </div>` : `
+      ${n > r.series && !E.extra ? `<div class="tarjeta terminado">
+        <h2>✓ Terminaste las ${r.series} series</h2>
+        <button class="grande" data-accion="${siguiente ? "abrir-ej" : "ir"}" data-e="${siguiente || ""}" data-p="sesion">${siguiente ? `Siguiente: ${EJERCICIOS[siguiente].nombre}` : "Ver lista del día"}</button>
+        <button class="sec" data-accion="serie-extra">Agregar una serie extra</button>
+      </div>` : `
       ${pres ? `<div class="tarjeta receta">
         <p class="chico suave" style="margin:0">Tu entrenador indica para hoy</p>
         <div class="receta-num">${equipo(e) === "corporal" && !pres.peso ? "Peso corporal" : fmtPeso(pres.peso, pres.unidad, e)} × ${pres.reps}</div>
@@ -347,7 +358,7 @@ const PANTALLAS = {
           <button class="sec" data-accion="reps" data-d="1">+</button>
         </div>
         <button class="grande" data-accion="confirmar-serie">✓ Confirmar serie</button>`}
-      </div>`}
+      </div>`}`}
       <div class="fila2">
         <button class="sec" data-accion="saltear-ej">Saltear ejercicio</button>
         <button class="sec" data-accion="${siguiente ? "abrir-ej" : "ir"}" data-e="${siguiente || ""}" data-p="sesion">${siguiente ? "Siguiente →" : "Ver lista"}</button>
@@ -440,6 +451,7 @@ const PANTALLAS = {
     app.innerHTML = `
       <button class="volver" data-accion="ir" data-p="inicio">← Inicio</button>
       <h1>Historial</h1>
+      ${await tarjetaRecordsRecientes()}
       ${DIAS_RUTINA.map((d) => `<h3>Día ${d} · ${DIAS[d].nombre}</h3>` + DIAS[d].ejercicios.map(itemHist).join("")).join("")}
       ${otros.length ? `<h3>Otros ejercicios (rutina anterior)</h3>` + otros.map(itemHist).join("") : ""}`;
   },
@@ -456,6 +468,7 @@ const PANTALLAS = {
     app.innerHTML = `
       <button class="volver" data-accion="hist-volver">← Historial</button>
       <h2>${EJERCICIOS[e].nombre}</h2>
+      ${mejoresMarcasHtml(series, lista)}
       <div class="tarjeta"><b>Fuerza estimada</b><p class="chico suave" style="margin:2px 0">Combina peso y repeticiones (fórmula de Epley): si sube, estás mejorando.</p>${grafico(lista.map((x) => ({ x: x.fecha, y: Math.round(Math.max(...x.series.map(e1rm)) * 10) / 10 })), "")}</div>
       <div class="tarjeta"><b>Peso máximo por sesión</b>${grafico(lista.map((x) => ({ x: x.fecha, y: x.max })), "kg")}</div>
       <div class="tarjeta">${lista.length ? lista.slice().reverse().map((x) => `
@@ -765,7 +778,7 @@ const ACCIONES = {
       siguienteEj = s.ejercicios.slice(s.ejercicios.indexOf(e) + 1).find((x) => !s.saltados.includes(x) && !s.movidos.includes(x));
       prox = siguienteEj ? `Ahora: ${EJERCICIOS[siguienteEj].nombre}` : "¡Último ejercicio terminado!";
     }
-    if (siguienteEj) { E.ejercicio = siguienteEj; E.valoresListos = false; E.manual = false; }
+    if (siguienteEj) { E.ejercicio = siguienteEj; E.valoresListos = false; E.manual = false; E.extra = false; }
     else E.valoresListos = true; // mantiene peso y reps para la próxima serie
     await mostrar(n >= r.series && !siguienteEj ? "sesion" : "ejercicio");
     // Se pregunta cuántas repeticiones sobraban solo en la 1ª serie (para corregir el peso hoy) y en la última (decide la próxima vez)
@@ -1463,3 +1476,13 @@ Object.assign(ACCIONES, {
   },
   "cerrar-hoja": () => cerrarHoja(),
 });
+
+Object.assign(ACCIONES, {
+  "serie-extra"() { E.extra = true; PANTALLAS.ejercicio(); },
+});
+// iPhone: después de escribir con el teclado, a veces la pantalla queda corrida y los elementos fijos
+// (barra del descanso, franja de arriba) aparecen en el medio. Al cerrar el teclado se reacomoda.
+document.addEventListener("focusout", () => setTimeout(() => {
+  window.scrollTo(window.scrollX, window.scrollY);
+  if (window.visualViewport && window.visualViewport.offsetTop > 0) window.scrollTo(0, window.scrollY - window.visualViewport.offsetTop);
+}, 120));
