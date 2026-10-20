@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 4 · v4";
+const VERSION_APP = "Etapa 4 · v6";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -83,7 +83,9 @@ async function unidadDe(e) {
 async function pasoDe(e, u) {
   const pasos = (await ajuste("pasos")) || {};
   // barra: el disco más chico es 1,25 kg por lado → de a 2,5 kg (si no, el peso indicado no se puede armar)
-  return pasos[e] || (u === "lb" ? 10 : equipo(e) === "barra" ? 2.5 : REGLAS.pasoPeso);
+  if (pasos[e]) return pasos[e];
+  if (PASOS_MAQUINA[e] && PASOS_MAQUINA[e][u]) return PASOS_MAQUINA[e][u];
+  return u === "lb" ? 10 : equipo(e) === "barra" ? 2.5 : equipo(e) === "maquina" ? 5 : REGLAS.pasoPeso;
 }
 const uSerie = (x) => x.unidad || "kg";
 // Texto del peso: "50 lb", "12 kg c/u", "60 kg"
@@ -316,7 +318,7 @@ const PANTALLAS = {
 
       ${hoy.length ? `<div class="tarjeta"><b>Hoy</b>${hoy.map((x) => `
         <div class="serie editable" data-accion="editar-serie" data-id="${x.id}"><span>Serie ${x.n}: <b>${fmtSerie(x)}</b></span>
-        <span class="lapiz">✎ Editar</span></div>`).join("")}</div>` : ""}
+        <span class="btn-editar">✎ Editar</span></div>`).join("")}</div>` : ""}
 
       ${u === null ? `<div class="tarjeta aviso">
         <b>¿Esta máquina marca el peso en kilos o en libras?</b>
@@ -716,8 +718,14 @@ const ACCIONES = {
   async "cal-timer"(d) {
     prepararSonido();
     const s = await DB.get("sesiones", E.sesion);
-    const x = CALENTAMIENTO[s.dia][d.i];
-    empezarDescanso(x.seg, "Terminó: " + EJERCICIOS[x.e].nombre, { titulo: EJERCICIOS[x.e].nombre, aviso: "¡Listo!", alTerminar: () => ACCIONES["cal-hecho"]({ i: d.i }) });
+    const x = CALENTAMIENTO[s.dia][d.i], nom = EJERCICIOS[x.e].nombre;
+    const fin = { titulo: nom, aviso: "¡Listo!", alTerminar: () => ACCIONES["cal-hecho"]({ i: d.i }) };
+    const lado = (x.dosis.match(/segundos por (lado|brazo|pierna)/) || [])[1];
+    if (!lado) return empezarDescanso(x.seg, "Terminó: " + nom, fin);
+    // estiramiento de un lado y del otro: dos tiempos con aviso para cambiar
+    const mitad = Math.round(x.seg / 2), otro = lado === "lado" ? "lado" : lado === "brazo" ? "brazo" : "pierna";
+    empezarDescanso(mitad, `Ahora el otro ${otro}`, { titulo: `${nom} · 1er ${otro}`, aviso: `¡Cambiá de ${otro}!`,
+      alTerminar: () => setTimeout(() => empezarDescanso(mitad, "Terminó: " + nom, { ...fin, titulo: `${nom} · 2do ${otro}` }), 1500) });
   },
   "abrir-ej": (d) => mostrar("ejercicio", { ejercicio: d.e, valoresListos: false, manual: false }),
 
@@ -1054,7 +1062,9 @@ function reprogramarDescanso() {
     if (f <= 0) {
       clearInterval(D.timer); $("#descanso").hidden = true; ocultarMini(); guardarAjuste("descanso", null);
       if (D.alTerminar) { const f = D.alTerminar; D.alTerminar = null; f(); }
-      if (document.visibilityState === "visible" && Date.now() - D.fin < 3000) { sonar(); $("#flash-tit").textContent = D.aviso || "¡A entrenar!"; $("#flash-txt").textContent = D.texto; $("#flash").hidden = false; }
+      // con la app a la vista suena enseguida; si estaba bloqueada, suena y avisa apenas volvés (hasta 10 min después)
+      if (document.visibilityState === "visible" && Date.now() - D.fin < 10 * 60000) { sonar(); $("#flash-tit").textContent = D.aviso || "¡A entrenar!"; $("#flash-txt").textContent = D.texto; $("#flash").hidden = false; }
+      else if (Date.now() - D.fin < 10 * 60000) { D.avisoPendiente = { aviso: D.aviso, texto: D.texto }; }
     }
   };
   tic(); D.timer = setInterval(tic, 250);
@@ -1090,6 +1100,14 @@ function prepararSonido() {
   if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
   ctx.resume();
 }
+// iPhone suspende el sonido cuando la pantalla se bloquea: se reactiva al tocar o al volver a la app
+["touchstart", "click"].forEach((ev) => document.addEventListener(ev, () => { if (ctx && ctx.state !== "running") ctx.resume(); }, { passive: true }));
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  if (ctx && ctx.state !== "running") ctx.resume();
+  const p = D.avisoPendiente; D.avisoPendiente = null;
+  if (p) { sonar(); $("#flash-tit").textContent = p.aviso || "¡A entrenar!"; $("#flash-txt").textContent = p.texto; $("#flash").hidden = false; }
+});
 function sonar() {
   if (!ctx) return;
   ctx.resume();

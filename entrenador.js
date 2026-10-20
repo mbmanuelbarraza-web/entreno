@@ -55,7 +55,13 @@ async function prescribir(e, s) {
   const uTxt = (v) => fmtPeso(v, u, e);
   let p = peso, objetivoReps, accion, razon;
   const todasMax = reps.every((x) => x >= r.repsMax);
-  if (s.descarga) {
+  const topeKg = TOPES[e], topeU = topeKg ? Math.floor((u === "lb" ? topeKg / 0.4536 : topeKg) / paso + 1e-6) * paso : Infinity;
+  if (!s.descarga && topeKg && peso >= topeU - 0.01) {
+    // Ya estás en el máximo de la máquina: se progresa sumando repeticiones
+    const maxR = Math.max(...reps);
+    objetivoReps = Math.min(r.repsMax + 5, (rir === 3 ? maxR + 2 : maxR + 1)); p = peso; accion = "mantener";
+    razon = `Estás en el tope de la máquina (${fmtPeso(topeU, u, e)}): seguimos sumando repeticiones (la última vez: ${reps.join(", ")}). Si te sobran, hacé cada repetición más lenta, con 2 segundos de pausa atrás.`;
+  } else if (s.descarga) {
     // Semana de descarga: mismo peso, mismas repeticiones, menos series y sin llegar al fallo
     objetivoReps = Math.min(r.repsMax, minR); accion = "mantener";
     razon = "Semana de descarga: mismo peso, menos series y dejá 2 o 3 repeticiones en reserva. Es para recuperarte y volver a subir.";
@@ -88,6 +94,7 @@ async function prescribir(e, s) {
   if (s.vuelta) { p = redondear(p * 0.9, paso); razon = `Volvés después de ${s.vuelta} días: bajamos un 10% para retomar sin lesionarte. ` + razon; }
   if (s.liviano) nota = "Día liviano: dejá 2 repeticiones en reserva, sin llegar al fallo. " + nota;
   if (s.descarga) nota = ""; // en la descarga no se habla de estancamiento
+  if (p > topeU) { p = topeU; razon = `Subimos hasta el tope de la máquina (${fmtPeso(topeU, u, e)}). Desde acá seguimos sumando repeticiones.`; }
   return { peso: Math.max(0, p), reps: objetivoReps, accion, razon, nota, unidad: u, mejores, anterior: { peso, reps: minR } };
 }
 
