@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 4 · v6";
+const VERSION_APP = "Etapa 4 · v7";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -146,6 +146,8 @@ const PANTALLAS = {
   async inicio() {
     const [sesiones, perfil, ultResp, pesos] = await Promise.all([DB.todos("sesiones"), ajuste("perfil"), ajuste("ultimoRespaldo"), DB.todos("pesoCorporal")]);
     const activa = sesiones.find((s) => !s.fin);
+    const olvidoFin = activa && (await olvidada(activa)) ? (await ultimaActividad(activa)) + 2 * 60000 : 0;
+    const olvidoTxt = olvidoFin ? `${fechaRel(olvidoFin - 2 * 60000)} a las ${hora(olvidoFin - 2 * 60000)}` : "";
     const terminadas = sesiones.filter((s) => s.fin).sort((a, b) => b.inicio - a.inicio);
     const ultima = terminadas[0];
     const modo = await leerModo();
@@ -188,7 +190,12 @@ const PANTALLAS = {
         <button data-accion="activar-notif">Activar notificaciones</button></div>` : ""}
       ${sinRespaldo ? `<div class="tarjeta aviso"><b>Hace más de una semana que no guardás un respaldo</b>
         <button class="sec" data-accion="ir" data-p="respaldo">Guardar respaldo</button></div>` : ""}
-      ${activa ? `
+      ${activa && olvidoTxt ? `
+        <div class="tarjeta aviso"><h2>¿Terminaste el entrenamiento?</h2>
+          <p>${tituloSesion(activa)} · ${nombreSesion(activa)} quedó abierto. Tu última serie fue ${olvidoTxt}.</p>
+          <p class="chico suave">Los músculos se cuentan desde tu última serie, así que el descanso de 48 h no se ve afectado.</p>
+          <button class="grande" data-accion="cerrar-olvidado">Sí, terminé a las ${hora(olvidoFin)}</button>
+          <button class="sec" data-accion="seguir">No, sigo entrenando</button></div>` : activa ? `
         <div class="tarjeta"><h2>Entrenamiento en curso</h2>
           <p>${tituloSesion(activa)} · ${nombreSesion(activa)}<br><span class="suave chico">Empezaste a las ${hora(activa.inicio)}</span></p>
           <button class="grande" data-accion="seguir">Seguir entrenando</button></div>` : `
@@ -815,14 +822,8 @@ const ACCIONES = {
   async terminar() {
     if (!E.confirmarFin) { E.confirmarFin = true; $("#b-terminar").textContent = "Tocá de nuevo para confirmar"; return; }
     const s = await DB.get("sesiones", E.sesion);
-    s.fin = Date.now();
-    const series = await DB.porIndice("series", "sesion", s.id);
-    const hechos = new Set(series.map((x) => x.ejercicio));
-    s.quedaronPendientes = DIAS[s.dia].especial ? [] : s.ejercicios.filter((e) => !hechos.has(e));
-    await DB.put("sesiones", s);
-    // los pendientes que se hicieron hoy se borran; los ejercicios que no se hicieron pasan a pendientes
-    await guardarPendientes((await leerPendientes()).filter((p) => !hechos.has(p.e)));
-    await moverAPendientes(s, s.quedaronPendientes);
+    // si hace rato que no anotás nada (te olvidaste de terminar), la hora de fin es la de tu última serie
+    await finalizarSesion(s, (await olvidada(s)) ? (await ultimaActividad(s)) + 2 * 60000 : Date.now());
     E.limiteActivo = null; cerrarHoja();
     cancelarDescanso(); soltarPantalla();
     mostrar("resumen");
@@ -1344,6 +1345,8 @@ function avisosLimite() {
   const fin = L.inicio + L.limite * 60000, ahora = Date.now(), out = [];
   if (fin - 600000 > ahora) out.push({ enSegundos: Math.round((fin - 600000 - ahora) / 1000), titulo: "Quedan 10 minutos", texto: "Tu límite de entrenamiento es a las " + hora(fin), etiqueta: "limite10" });
   if (fin > ahora) out.push({ enSegundos: Math.round((fin - ahora) / 1000), titulo: "Llegaste a tu límite de tiempo", texto: "Abrí la app para terminar o sumar minutos", etiqueta: "limite" });
+  const olvido = fin + REGLAS.olvidoAvisoMin * 60000;
+  if (olvido > ahora) out.push({ enSegundos: Math.round((olvido - ahora) / 1000), titulo: "¿Terminaste de entrenar?", texto: "El entrenamiento sigue abierto. Abrí la app y tocá «Terminar entrenamiento».", etiqueta: "olvido" });
   return out;
 }
 async function fijarLimiteActivo(s) {
@@ -1432,6 +1435,7 @@ function aplicarLetra(px) { document.documentElement.style.setProperty("--letra"
   await cargarPesoCorporal();
   await corregirMancuernasV7();
   await aplicarBalance();
+  await corregirFinesOlvidados();
   const perfil = await ajuste("perfil");
   if (!perfil || !perfil.nacimiento) return mostrar("config");
   const activa = (await DB.todos("sesiones")).find((s) => !s.fin);
@@ -1504,3 +1508,43 @@ document.addEventListener("focusout", () => setTimeout(() => {
   window.scrollTo(window.scrollX, window.scrollY);
   if (window.visualViewport && window.visualViewport.offsetTop > 0) window.scrollTo(0, window.scrollY - window.visualViewport.offsetTop);
 }, 120));
+
+// =====================================================================
+// ENTRENAMIENTO OLVIDADO ABIERTO (pedido de Manuel, 22/10)
+// Si pasan más de 2 h sin anotar nada, la app pregunta si terminaste y cierra con la hora de tu última serie.
+// El descanso de los músculos no se afecta: siempre se cuenta desde la hora de cada serie.
+// =====================================================================
+REGLAS.olvidoHoras = 2;        // sin anotar nada durante este tiempo → se pregunta
+REGLAS.olvidoAvisoMin = 45;    // push "¿Terminaste de entrenar?" 45 min después del límite
+async function ultimaActividad(s) {
+  const xs = await DB.porIndice("series", "sesion", s.id);
+  return Math.max(s.inicio, s.calFin || 0, ...xs.map((x) => x.hora));
+}
+async function olvidada(s) { return !s.fin && Date.now() - (await ultimaActividad(s)) > REGLAS.olvidoHoras * 3600000; }
+const fechaRel = (ts) => { const d = new Date(ts), hoy = new Date(); const ayer = new Date(); ayer.setDate(hoy.getDate() - 1);
+  return d.toDateString() === hoy.toDateString() ? "hoy" : d.toDateString() === ayer.toDateString() ? "ayer" : "el " + fecha(ts); };
+async function finalizarSesion(s, fin) {
+  s.fin = Math.max(fin, s.inicio + 60000);
+  const series = await DB.porIndice("series", "sesion", s.id);
+  const hechos = new Set(series.map((x) => x.ejercicio));
+  s.quedaronPendientes = DIAS[s.dia].especial ? [] : s.ejercicios.filter((e) => !hechos.has(e));
+  await DB.put("sesiones", s);
+  // los pendientes que se hicieron se borran; los ejercicios que no se hicieron pasan a pendientes
+  await guardarPendientes((await leerPendientes()).filter((p) => !hechos.has(p.e)));
+  await moverAPendientes(s, s.quedaronPendientes);
+}
+Object.assign(ACCIONES, {
+  async "cerrar-olvidado"() {
+    const s = (await DB.todos("sesiones")).find((x) => !x.fin); if (!s) return mostrar("inicio");
+    await finalizarSesion(s, (await ultimaActividad(s)) + 2 * 60000);
+    E.sesion = s.id; E.limiteActivo = null; cancelarDescanso(); soltarPantalla(); programarAvisos([]);
+    toast("Listo: lo cerré con la hora de tu última serie"); mostrar("resumen");
+  },
+});
+// Arreglo de entrenamientos ya cerrados tarde: si el fin quedó más de 3 h después de la última serie, se corrige
+async function corregirFinesOlvidados() {
+  for (const s of (await DB.todos("sesiones")).filter((x) => x.fin)) {
+    const ult = await ultimaActividad(s);
+    if (s.fin - ult > 3 * 3600000) { s.fin = ult + 2 * 60000; s.finCorregido = true; await DB.put("sesiones", s); }
+  }
+}
