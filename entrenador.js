@@ -610,7 +610,10 @@ async function subirPesoHoy(subir) {
   if (!s || !e || E.ejercicio !== e) return;
   const u = E.rirUnidad || "kg", paso = await pasoDe(e, u);
   const antes = E.peso;
-  const nuevo = subir ? E.rirBase + paso : E.rirBase;
+  // nunca por encima del tope de la máquina (ej.: remo 100 kg)
+  const topeKg = TOPES[e], topeU = topeKg ? Math.floor((u === "lb" ? topeKg / 0.4536 : topeKg) / paso + 1e-6) * paso : Infinity;
+  const nuevo = subir ? Math.min(E.rirBase + paso, Math.max(topeU, E.rirBase)) : E.rirBase;
+  if (subir && nuevo === E.rirBase) { $("#d-rir-ok").innerHTML = `<b>Estás en el tope de la máquina: sumá repeticiones o hacelas más lentas.</b>`; return; }
   s.subeHoy = s.subeHoy || {};
   if (subir) s.subeHoy[e] = nuevo; else delete s.subeHoy[e];
   await DB.put("sesiones", s);

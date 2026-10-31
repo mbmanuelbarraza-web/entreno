@@ -7,7 +7,7 @@
 //   5. Arranque
 
 const SERVIDOR = "https://entreno-avisos.manuel-entreno.workers.dev";
-const VERSION_APP = "Etapa 4 · v7";
+const VERSION_APP = "Etapa 4 · v9";
 
 // =====================================================================
 // 1. BASE DE DATOS (IndexedDB)
@@ -218,7 +218,7 @@ const PANTALLAS = {
         </section>
         ${opcionesDia.length > 1 ? `<div class="segmentos">${opcionesDia.map((d) => `<button class="${d === dia ? "activo" : ""}" data-accion="elegir-dia" data-d="${d}">${textoDia(d)}</button>`).join("")}</div>` : ""}
         <details class="tarjeta plegable" open><summary>Ejercicios de hoy</summary>
-          ${DIAS[dia].ejercicios.map((e) => `<div class="chico fila-ej">· ${EJERCICIOS[e].nombre} <span class="suave">${!plan.tolerable && plan.pendientes.includes(e) ? "otro día" : `${plan.tolerable ? seriesDe(dia, e) : plan.objetivos[e] || 0}×${reglas(e).repsMin}-${reglas(e).repsMax}`}${plan.prioridad.includes(EJERCICIOS[e].principal) ? " · prioridad" : ""}</span></div>`).join("")}
+          ${DIAS[dia].ejercicios.map((e) => `<div class="chico fila-ej">· ${EJERCICIOS[e].nombre} <span class="suave">${!plan.tolerable && plan.pendientes.includes(e) ? "otro día" : `${plan.tolerable ? plan.plenos[e] : plan.objetivos[e] || 0}×${reglas(e).repsMin}-${reglas(e).repsMax}`}${plan.prioridad.includes(EJERCICIOS[e].principal) ? " · prioridad" : ""}</span></div>`).join("")}
           ${agregados.map((a) => `<div class="chico">· ${EJERCICIOS[a.e].nombre} <span class="suave">${a.series}×${reglas(a.e).repsMin}-${reglas(a.e).repsMax} · <span class="ok">pendiente sumado</span></span></div>`).join("")}
         </details>
         <details class="tarjeta plegable" ${!plan.tolerable || agregados.length ? "open" : ""}><summary>Tiempo estimado</summary>${planHtml}</details>
@@ -281,6 +281,11 @@ const PANTALLAS = {
   async ejercicio() {
     const e = E.ejercicio, info = EJERCICIOS[e];
     const s = await DB.get("sesiones", E.sesion);
+    // si abrís un ejercicio que había quedado para "otro día" (objetivo 0), vuelve con sus series normales
+    if (s && objetivo(s, e) === 0) {
+      s.objetivos = s.objetivos || {}; s.objetivos[e] = (s.objetivosPlenos || {})[e] || seriesDe(s.dia, e);
+      s.movidos = (s.movidos || []).filter((x) => x !== e); await DB.put("sesiones", s);
+    }
     const r = { ...reglas(e), series: objetivo(s, e) };
     const hoy = (await DB.porIndice("series", "sesion", s.id)).filter((x) => x.ejercicio === e).sort((a, b) => a.n - b.n);
     const ant = await seriesAnteriores(e, s.id);
@@ -632,25 +637,25 @@ const ACCIONES = {
     const dia = isNaN(+d.d) ? d.d : +d.d;
     const modo = await leerModo();
     const limite = limiteDe(dia, modo);
-    const plan = await planDelDia(DIAS[dia].ejercicios, limite, dia);
+    const liviano = d.liviano === "1" || (modo && modo.tipo === "liviano") || (await ajuste("livianoProxima"));
+    if (await ajuste("livianoProxima")) await guardarAjuste("livianoProxima", false);
+    const descarga = !!(modo && modo.tipo === "descarga");
+    const plan = await planDelDia(DIAS[dia].ejercicios, limite, dia, { liviano: !!liviano, descarga });
     const ajustado = d.modo === "ajustado";
     // dentro del margen de tolerancia: se hace todo y el límite de hoy se estira esos minutos (sin avisos de apuro)
     const limiteSes = !ajustado && !plan.entra && plan.tolerable ? limite + REGLAS.toleranciaMin : limite;
-    const liviano = d.liviano === "1" || (modo && modo.tipo === "liviano") || (await ajuste("livianoProxima"));
-    if (await ajuste("livianoProxima")) await guardarAjuste("livianoProxima", false);
-    const objetivos = ajustado ? { ...plan.objetivos } : Object.fromEntries(DIAS[dia].ejercicios.map((e) => [e, seriesDe(dia, e)]));
+    // las reducciones de sesión liviana o descarga ya vienen aplicadas en el plan (no se aplican dos veces)
+    const plenos = { ...plan.plenos };
+    const objetivos = ajustado ? { ...plan.objetivos } : { ...plenos };
     const agregados = ajustado ? [] : await agregablesHoy(dia, plan, limite);
-    for (const a of agregados) objetivos[a.e] = a.series;
-    if (liviano) for (const e in objetivos) if (objetivos[e] > 0) objetivos[e] = Math.max(2, objetivos[e] - 1);
-    const descarga = !!(modo && modo.tipo === "descarga");
-    if (descarga) for (const e in objetivos) if (objetivos[e] > 0) objetivos[e] = Math.max(2, Math.ceil(objetivos[e] / 2));
+    for (const a of agregados) { objetivos[a.e] = a.series; plenos[a.e] = a.series; }
     // ¿vuelve después de muchos días sin entrenar?
     const ultimaFin = Math.max(0, ...(await DB.todos("sesiones")).filter((x) => x.fin).map((x) => x.fin));
     const diasSin = ultimaFin ? Math.floor((Date.now() - ultimaFin) / 86400000) : 0;
     const s = { id: nuevoId(), dia, inicio: Date.now(), fin: null, ejercicios: DIAS[dia].ejercicios.concat(agregados.map((a) => a.e)), agregados: agregados.map((a) => a.e), saltados: [], bloques: {},
       rutina: DIAS[dia].especial ? null : RUTINA_VERSION, nombre: DIAS[dia].nombre,
       opcion: ajustado ? "ajustado" : "completo", limite: limiteSes, limiteOriginal: limiteSes,
-      objetivos, movidos: ajustado ? plan.pendientes.slice() : [],
+      objetivos, objetivosPlenos: plenos, movidos: ajustado ? plan.pendientes.slice() : [],
       checkin: E.chk && Object.keys(E.chk).length ? { ...E.chk } : null, liviano: !!liviano, descarga, vuelta: diasSin > REGLAS.vueltaDias ? diasSin : 0 };
     await DB.put("sesiones", s);
     // los pendientes de este mismo día se hacen hoy: ya no hacen falta
@@ -834,10 +839,12 @@ const ACCIONES = {
   async "tiempo-sumar"() {
     const s = await DB.get("sesiones", E.sesion);
     s.limite = (s.limite || REGLAS.limiteMin) + E.minExtra;
-    s.avisoProyeccion = null; await DB.put("sesiones", s);
+    s.avisoProyeccion = null;
+    const rec = await recuperarRecortes(s); // con el tiempo nuevo, vuelve lo que se había recortado (si entra)
+    await DB.put("sesiones", s);
     await fijarLimiteActivo(s); programarAvisos(D.fin > Date.now() ? avisosDescanso() : []);
     cerrarHoja(); E.proyCache = 0;
-    toast(`Sumaste ${E.minExtra} min: nuevo límite ${hora(s.inicio + s.limite * 60000)}`);
+    toast(`Sumaste ${E.minExtra} min: nuevo límite ${hora(s.inicio + s.limite * 60000)}${rec.series || rec.ejercicios ? ` · volvieron ${rec.series} series${rec.ejercicios ? ` y ${rec.ejercicios} ejercicio(s)` : ""}` : ""}`);
     if (E.pantalla === "sesion" || E.pantalla === "ejercicio") PANTALLAS[E.pantalla]();
   },
   async "tiempo-ajustar"() {
@@ -1073,6 +1080,7 @@ function reprogramarDescanso() {
 function ocultarMini() { $("#mini-descanso").hidden = true; document.body.classList.remove("con-mini"); }
 function cancelarDescanso() {
   clearInterval(D.timer); $("#descanso").hidden = true; ocultarMini(); guardarAjuste("descanso", null);
+  D.fin = 0; setTimeout(soltarSonido, 300);
   if (D.alTerminar) { const f = D.alTerminar; D.alTerminar = null; f(); } // "Terminar" antes de tiempo también cuenta como hecho
   cancelarAvisos();
 }
@@ -1096,22 +1104,35 @@ async function retomarDescanso() {
 
 // Pitido (se mezcla con Spotify)
 let ctx = null;
+// "ambient" = el pitido se mezcla con Spotify en vez de cortarlo. iPhone a veces lo olvida al cambiar de app,
+// por eso se vuelve a poner antes de cada uso del sonido.
+function asegurarAmbient() { if (navigator.audioSession) { try { navigator.audioSession.type = "ambient"; } catch (e) {} } }
+asegurarAmbient();
+const hayTemporizador = () => D.fin > Date.now();
 function prepararSonido() {
-  if (navigator.audioSession) { try { navigator.audioSession.type = "ambient"; } catch (e) {} }
+  asegurarAmbient();
   if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
   ctx.resume();
 }
+// Cuando no hay ningún temporizador corriendo, el sonido se apaga del todo para no tomar el audio del iPhone
+function soltarSonido() { if (ctx && ctx.state === "running" && !hayTemporizador()) ctx.suspend(); }
 // iPhone suspende el sonido cuando la pantalla se bloquea: se reactiva al tocar o al volver a la app
-["touchstart", "click"].forEach((ev) => document.addEventListener(ev, () => { if (ctx && ctx.state !== "running") ctx.resume(); }, { passive: true }));
+// Bug corregido (31/10): antes se reactivaba el sonido cada vez que volvías a la app y eso cortaba Spotify.
+// Ahora solo se reactiva si hay un descanso o cronómetro corriendo, y siempre en modo "ambient".
+["touchstart", "click"].forEach((ev) => document.addEventListener(ev, () => {
+  if (ctx && ctx.state !== "running" && hayTemporizador()) { asegurarAmbient(); ctx.resume(); }
+}, { passive: true }));
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState !== "visible") return;
-  if (ctx && ctx.state !== "running") ctx.resume();
+  if (document.visibilityState !== "visible") { soltarSonido(); return; }
   const p = D.avisoPendiente; D.avisoPendiente = null;
   if (p) { sonar(); $("#flash-tit").textContent = p.aviso || "¡A entrenar!"; $("#flash-txt").textContent = p.texto; $("#flash").hidden = false; }
+  else if (ctx && ctx.state !== "running" && hayTemporizador()) { asegurarAmbient(); ctx.resume(); }
 });
 function sonar() {
   if (!ctx) return;
+  asegurarAmbient();
   ctx.resume();
+  setTimeout(soltarSonido, 2500); // después del pitido, se suelta el audio si no hay otro temporizador
   const comp = ctx.createDynamicsCompressor(); comp.connect(ctx.destination);
   const t0 = ctx.currentTime;
   [0, 0.22, 0.44, 0.9, 1.12, 1.34].forEach((d) => {
@@ -1188,7 +1209,9 @@ const tituloSesion = (s) => (s.tipo === "pendientes" ? "Pendientes" : textoDia(s
 
 // Ritmo real a partir del historial (si hay pocos datos, usa el ritmo inicial medido)
 async function ritmoReal() {
-  const series = (await DB.todos("series")).sort((a, b) => a.hora - b.hora);
+  // solo las últimas 3 semanas: tu ritmo de hoy, no el de los primeros días
+  const desde = Date.now() - REGLAS.ritmoDias * 86400000;
+  const series = (await DB.todos("series")).filter((x) => x.hora >= desde).sort((a, b) => a.hora - b.hora);
   const ov = { compuesto: [], aislamiento: [] }, cambio = [], cal = [];
   const porSesion = {};
   series.forEach((x) => (porSesion[x.sesion] = porSesion[x.sesion] || []).push(x));
@@ -1197,23 +1220,25 @@ async function ritmoReal() {
     const t = tipoDe(a.ejercicio);
     const desc = a.descanso != null ? a.descanso : t === "compuesto" ? 120 : 75; // series viejas: descansos de antes
     const extra = (b.hora - a.hora) / 1000 - desc;
-    if (extra < 0 || extra > 600) continue; // pausas raras (una llamada, etc.) no cuentan
+    // si salteaste o acortaste el descanso, el dato es negativo y también cuenta (antes se descartaba y el ritmo salía más lento)
+    if (extra < -desc || extra > 600) continue; // pausas raras (una llamada, etc.) no cuentan
     (a.ejercicio === b.ejercicio ? ov[t] : cambio).push(extra);
   }
   (await DB.todos("sesiones")).forEach((s) => { if (s.calInicio && s.calFin) cal.push((s.calFin - s.calInicio) / 1000); });
-  const R = REGLAS.ritmoInicial, med = (a, d) => (a.length >= 3 ? mediana(a) : d);
+  const R = REGLAS.ritmoInicial, med = (a, d) => (a.length >= 3 ? Math.max(15, mediana(a)) : d);
   return { compuesto: med(ov.compuesto, R.compuesto), aislamiento: med(ov.aislamiento, R.aislamiento), cambio: med(cambio, R.cambio), calentamiento: med(cal, R.calentamiento) };
 }
 
 // Segundos para hacer una lista [{e, n}] en orden (n = series que faltan)
 function estimar(items, rit) {
-  let t = 0, cuantos = 0;
+  let t = 0, cuantos = 0, ultimo = null;
   for (const { e, n } of items) {
     if (n <= 0) continue;
     t += n * (reglas(e).descanso + rit[tipoDe(e)]);
     if (cuantos++ > 0) t += rit.cambio;
+    ultimo = e;
   }
-  return t;
+  return ultimo ? t - reglas(ultimo).descanso : t; // después de la última serie del día no hay descanso
 }
 
 // Recorta para que entre en "disponible" segundos.
@@ -1245,15 +1270,27 @@ function ajustar(items, rit, disponible) {
 }
 
 // Plan para un día antes de empezar
-async function planDelDia(ejercicios, limiteMin, dia) {
+// Series de hoy de un ejercicio, aplicando sesión liviana (−1) o semana de descarga (mitad), mínimo 2
+function seriesHoy(dia, e, red) {
+  let n = seriesDe(dia, e);
+  if (red && red.liviano) n = Math.max(2, n - 1);
+  if (red && red.descarga) n = Math.max(2, Math.ceil(n / 2));
+  return n;
+}
+async function reduccionHoy() {
+  const modo = await leerModo();
+  return { liviano: !!((modo && modo.tipo === "liviano") || (await ajuste("livianoProxima"))), descarga: !!(modo && modo.tipo === "descarga") };
+}
+async function planDelDia(ejercicios, limiteMin, dia, red) {
   const rit = await ritmoReal();
   const prioridad = await rezagados();
   const especial = dia != null && DIAS[dia] && DIAS[dia].especial;
-  const base = ejercicios.map((e) => ({ e, n: seriesDe(dia, e), min: REGLAS.minSeries[tipoDe(e)], nuevo: !especial, prioridad: prioridad.includes(EJERCICIOS[e].principal) }));
+  red = red || (await reduccionHoy());
+  const base = ejercicios.map((e) => ({ e, n: seriesHoy(dia, e, red), min: REGLAS.minSeries[tipoDe(e)], nuevo: !especial, prioridad: prioridad.includes(EJERCICIOS[e].principal) }));
   const completo = rit.calentamiento + estimar(base, rit);
   const aj = ajustar(base, rit, limiteMin * 60 - rit.calentamiento);
   return { rit, prioridad, completo, ajustado: rit.calentamiento + aj.t, recortes: aj.recortes, pendientes: aj.pendientes,
-    objetivos: Object.fromEntries(aj.items.map((x) => [x.e, x.n])), entra: completo <= limiteMin * 60,
+    objetivos: Object.fromEntries(aj.items.map((x) => [x.e, x.n])), plenos: Object.fromEntries(base.map((x) => [x.e, x.n])), entra: completo <= limiteMin * 60,
     tolerable: completo <= (limiteMin + REGLAS.toleranciaMin) * 60 };
 }
 
@@ -1400,7 +1437,7 @@ async function moverAPendientes(s, ejercicios) {
   if (!ejercicios.length) return;
   const lista = await leerPendientes();
   for (const e of ejercicios) if (!lista.some((p) => p.e === e))
-    lista.push({ id: nuevoId(), e, series: objetivo(s, e) || seriesDe(s.dia, e), dia: s.tipo === "pendientes" ? (lista.find((p) => p.e === e) || {}).dia || s.dia : s.dia, desde: Date.now() });
+    lista.push({ id: nuevoId(), e, series: ((s.objetivosPlenos || {})[e]) || seriesDe(s.dia, e), dia: s.tipo === "pendientes" ? (lista.find((p) => p.e === e) || {}).dia || s.dia : s.dia, desde: Date.now() });
   await guardarPendientes(lista);
 }
 
@@ -1547,4 +1584,37 @@ async function corregirFinesOlvidados() {
     const ult = await ultimaActividad(s);
     if (s.fin - ult > 3 * 3600000) { s.fin = ult + 2 * 60000; s.finCorregido = true; await DB.put("sesiones", s); }
   }
+}
+
+// =====================================================================
+// SUMAR MINUTOS DEVUELVE LO RECORTADO (bug reportado por Manuel, 31/10)
+// Parte de las series completas del día y recorta solo lo que no entre en el tiempo nuevo,
+// sin bajar nunca de lo que ya tenías. Los ejercicios mandados a "otro día" vuelven si entran.
+// =====================================================================
+REGLAS.ritmoDias = 21;
+async function recuperarRecortes(s) {
+  const series = await DB.porIndice("series", "sesion", s.id);
+  const hechas = (e) => series.filter((x) => x.ejercicio === e).length;
+  const movidos = s.movidos || [], plenos = s.objetivosPlenos || {};
+  const prioridad = await rezagados();
+  const items = s.ejercicios.filter((e) => !s.saltados.includes(e)).map((e) => {
+    const h = hechas(e), pleno = Math.max(plenos[e] || seriesDe(s.dia, e), h);
+    const actual = movidos.includes(e) ? h : Math.max(objetivo(s, e), h);
+    return { e, h, n: pleno - h, min: actual - h, nuevo: movidos.includes(e) && h === 0, prioridad: prioridad.includes(EJERCICIOS[e].principal), antes: actual };
+  });
+  const p = await proyeccion(s);
+  let disponible = (s.inicio + s.limite * 60000 - Date.now()) / 1000;
+  if (!s.bloques.calentamiento && s.tipo !== "pendientes") disponible -= Math.max(0, p.rit.calentamiento - (s.calInicio ? (Date.now() - s.calInicio) / 1000 : 0));
+  const aj = ajustar(items, p.rit, Math.max(0, disponible));
+  let nSeries = 0, nEj = 0;
+  s.objetivos = s.objetivos || {};
+  for (const x of aj.items) {
+    const orig = items.find((y) => y.e === x.e), nuevoObj = x.n + orig.h;
+    if (nuevoObj > orig.antes) nSeries += nuevoObj - orig.antes;
+    if (movidos.includes(x.e) && x.n > 0) nEj++;
+    if (x.n > 0 || !movidos.includes(x.e)) s.objetivos[x.e] = Math.max(nuevoObj, orig.antes);
+  }
+  s.movidos = movidos.filter((e) => { const x = aj.items.find((y) => y.e === e); return !x || x.n === 0; });
+  if (!s.movidos.length && nSeries) s.opcion = "completo";
+  return { series: nSeries, ejercicios: nEj };
 }
